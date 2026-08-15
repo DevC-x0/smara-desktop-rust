@@ -1,0 +1,26 @@
+# Node dependencies
+node_modules/
+.pnp
+.pnp.js
+.vite/
+dist/
+
+# Rust / Cargo build
+target/
+src-tauri/target/
+
+# Test results & reports
+test-results/
+playwright-report/
+blob-report/
+coverage/
+
+# IDE & Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db

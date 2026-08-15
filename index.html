@@ -1,0 +1,441 @@
+<!doctype html>
+<html lang="id">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Smara Desktop</title>
+  </head>
+  <body>
+    <main class="smara-shell launcher-shell">
+      <div class="smara-orb smara-orb-a" aria-hidden="true"></div>
+      <div class="smara-orb smara-orb-b" aria-hidden="true"></div>
+      <div class="smara-orb smara-orb-c" aria-hidden="true"></div>
+      <aside class="desktop-sidebar" aria-label="Smara Desktop navigation">
+        <div class="sidebar-brand">
+          <div class="brand-mark" aria-hidden="true"><span></span></div>
+          <div>
+            <strong>Smara</strong>
+            <span>Autonomous Console</span>
+          </div>
+        </div>
+        <section class="sidebar-status-card">
+          <div class="sidebar-status-title">✦ Local console</div>
+          <small>CLI · Web · Skills · Memory</small>
+          <div class="sidebar-health-row">
+            <span class="runtime-indicator" aria-hidden="true"></span>
+            <span>Desktop runtime</span>
+          </div>
+        </section>
+        <nav class="sidebar-nav">
+          <p>Core</p>
+          <a class="active" href="#dashboard-section" data-page-target="dashboard"><span class="nav-label"><span class="nav-icon">⌂</span>Dashboard</span><span>Home</span></a>
+          <a href="#chat-section" data-page-target="chat"><span class="nav-label"><span class="nav-icon">💬</span>Chat</span><span>Sesi</span></a>
+          <a href="#memory-section" data-page-target="memory"><span class="nav-label"><span class="nav-icon">◌</span>Memory</span></a>
+          <a href="#skill-section" data-page-target="skill"><span class="nav-label"><span class="nav-icon">✳</span>Skills</span></a>
+          <p>Build</p>
+          <a href="#workflow-section" data-page-target="workflow"><span class="nav-label"><span class="nav-icon">⌁</span>Workflow</span></a>
+          <a href="#mcp-section" data-page-target="mcp"><span class="nav-label"><span class="nav-icon">▣</span>MCP</span></a>
+          <a href="#graphify-section" data-page-target="graphify"><span class="nav-label"><span class="nav-icon">◎</span>Graphify</span></a>
+          <p>Media</p>
+          <a href="#media-section" data-page-target="media"><span class="nav-label"><span class="nav-icon">▧</span>Media</span></a>
+          <p>System</p>
+          <a href="#settings-section" data-page-target="settings"><span class="nav-label"><span class="nav-icon">⚙</span>Settings</span></a>
+        </nav>
+        <section class="sidebar-chat-sessions" aria-label="Sesi Chat">
+          <div class="sidebar-chat-header">
+            <span>Sesi Chat</span>
+            <button id="sidebar-new-chat-button" type="button" aria-label="Buat sesi Chat baru" title="Buat sesi Chat baru">+</button>
+          </div>
+          <div id="sidebar-chat-session-list" class="sidebar-chat-session-list">
+            <p class="sidebar-chat-empty">Belum ada sesi.</p>
+          </div>
+        </section>
+        <section class="sidebar-footer-card">
+          <span>Smara Web</span>
+          <small>Local AI control center</small>
+        </section>
+      </aside>
+      <section class="launcher-card" aria-labelledby="launcher-title">
+        <header class="desktop-topbar">
+          <div class="topbar-session">
+            <div class="topbar-icon" aria-hidden="true">✦</div>
+            <div>
+              <strong>Smara Desktop</strong>
+              <small>Runtime Rust-native</small>
+            </div>
+          </div>
+          <div class="topbar-actions">
+            <span class="status-pill">v0.3.0</span>
+            <button id="refresh-provider-button" class="secondary-button" type="button">Periksa provider</button>
+            <span class="online-pill"><span></span> Local</span>
+          </div>
+        </header>
+        <section class="runtime-contract" aria-hidden="true">
+          <h1 id="launcher-title">Runtime Rust-native</h1>
+          <p id="launcher-status" role="status">Menyiapkan Smara Desktop...</p>
+          <div id="launcher-progress"></div>
+          <section id="native-runtime" hidden>
+            <p id="native-runtime-summary"></p>
+            <div id="native-capabilities"></div>
+          </section>
+          <div id="launcher-error" hidden>
+            <p id="launcher-error-message"></p>
+          </div>
+        </section>
+        <section class="feature-grid desktop-pages" aria-label="Fitur Smara Desktop">
+          <section id="dashboard-section" class="feature-panel dashboard-panel page-active" data-page="dashboard">
+            <header>
+              <div>
+                <p class="panel-kicker">Local AI Control Center</p>
+                <h2>Dashboard</h2>
+              </div>
+              <span class="count-badge">Overview</span>
+            </header>
+            <section class="dashboard-hero">
+              <div>
+                <p class="panel-kicker">Smara Web style</p>
+                <h3>Selamat datang di Smara Desktop Rust</h3>
+                <p>Kontrol chat, memory, skills, workflow, MCP, Graphify, media, dan provider lokal dari satu dashboard desktop.</p>
+                <div class="dashboard-actions">
+                  <button type="button" data-page-shortcut="chat">Mulai Chat</button>
+                  <button class="secondary-button" type="button" data-page-shortcut="settings">Cek Provider</button>
+                </div>
+              </div>
+              <div class="dashboard-runtime-card">
+                <span class="runtime-indicator" aria-hidden="true"></span>
+                <strong>Rust-native runtime</strong>
+                <small>Standalone · Local-first · Provider ready</small>
+              </div>
+            </section>
+            <section class="dashboard-stats" aria-label="Ringkasan fitur">
+              <button class="dashboard-stat-card" type="button" data-page-shortcut="chat"><span>💬</span><strong>Chat</strong><small>Streaming agent & session</small></button>
+              <button class="dashboard-stat-card" type="button" data-page-shortcut="memory"><span>◌</span><strong>Memory</strong><small>Konteks lokal tersimpan</small></button>
+              <button class="dashboard-stat-card" type="button" data-page-shortcut="skill"><span>✳</span><strong>Skills</strong><small>Automasi reusable</small></button>
+              <button class="dashboard-stat-card" type="button" data-page-shortcut="workflow"><span>⌁</span><strong>Workflow</strong><small>Orkestrasi tugas</small></button>
+              <button class="dashboard-stat-card" type="button" data-page-shortcut="mcp"><span>▣</span><strong>MCP</strong><small>Tools eksternal</small></button>
+              <button class="dashboard-stat-card" type="button" data-page-shortcut="graphify"><span>◎</span><strong>Graphify</strong><small>Knowledge graph</small></button>
+              <button class="dashboard-stat-card" type="button" data-page-shortcut="media"><span>▧</span><strong>Media</strong><small>Asset lokal</small></button>
+              <button class="dashboard-stat-card" type="button" data-page-shortcut="settings"><span>⚙</span><strong>Settings</strong><small>Provider & config</small></button>
+            </section>
+            <section class="dashboard-bottom-grid">
+              <div class="dashboard-panel-card">
+                <strong>Quick Start</strong>
+                <ol>
+                  <li>Buka Settings untuk pilih provider/model.</li>
+                  <li>Mulai Chat dan kirim instruksi.</li>
+                  <li>Simpan konteks penting ke Memory.</li>
+                </ol>
+              </div>
+              <div class="dashboard-panel-card">
+                <strong>Live status</strong>
+                <p id="dashboard-status" class="panel-status">Dashboard siap. Semua fitur utama bisa dibuka dari kartu di atas.</p>
+              </div>
+            </section>
+          </section>
+          <section id="chat-section" class="feature-panel chat-panel" data-page="chat">
+            <header>
+              <div>
+                <p class="panel-kicker">Rust-native</p>
+                <h2>Chat</h2>
+              </div>
+              <div class="panel-actions">
+                <button id="new-chat-button" class="secondary-button" type="button">Sesi baru</button>
+                <button id="retry-chat-button" class="secondary-button" type="button" disabled>Retry</button>
+                <button id="cancel-chat-stream-button" class="danger-button" type="button" hidden>Batal stream</button>
+                <button id="delete-chat-button" class="danger-button" type="button" disabled>Hapus sesi</button>
+              </div>
+            </header>
+            <section class="chat-welcome-board" aria-label="Smara Desktop overview">
+              <div class="welcome-copy">
+                <p class="panel-kicker">Local AI Control Center</p>
+                <h3>Mulai percakapan dengan Smara Desktop</h3>
+                <p>Area chat dan fitur aktif tampil di panel utama. Gunakan kartu cepat untuk membuka Memory, Skills, Workflow, MCP, Graphify, Media, dan Settings.</p>
+              </div>
+              <div class="quick-feature-grid" aria-label="Fitur cepat">
+                <button class="quick-feature-card" type="button" data-page-shortcut="memory"><strong>Memory</strong><span>Simpan konteks penting</span></button>
+                <button class="quick-feature-card" type="button" data-page-shortcut="skill"><strong>Skills</strong><span>Automasi reusable</span></button>
+                <button class="quick-feature-card" type="button" data-page-shortcut="workflow"><strong>Workflow</strong><span>Orkestrasi tugas</span></button>
+                <button class="quick-feature-card" type="button" data-page-shortcut="mcp"><strong>MCP</strong><span>Integrasi tools lokal</span></button>
+                <button class="quick-feature-card" type="button" data-page-shortcut="graphify"><strong>Graphify</strong><span>Knowledge graph</span></button>
+                <button class="quick-feature-card" type="button" data-page-shortcut="media"><strong>Media</strong><span>Library asset lokal</span></button>
+              </div>
+            </section>
+            <select id="chat-session-select" aria-label="Chat session">
+              <option value="">Sesi baru</option>
+            </select>
+            <div id="chat-messages" class="chat-messages" aria-live="polite">
+              <p class="empty-copy">Kirim pesan untuk memulai sesi Desktop.</p>
+            </div>
+            <form id="chat-form" class="chat-form">
+              <div id="chat-attachments" class="chat-attachments" aria-live="polite" hidden></div>
+              <div class="chat-compose-row">
+                <button id="attach-chat-button" class="secondary-button chat-attach-button" type="button" aria-label="Tambahkan gambar atau file" title="Tambahkan gambar atau file">+</button>
+                <textarea id="chat-input" aria-label="Chat message" placeholder="Tulis pesan atau paste gambar..." rows="3"></textarea>
+                <button id="send-chat-button" type="submit">Kirim</button>
+              </div>
+              <input id="chat-file-input" type="file" multiple hidden />
+            </form>
+            <div class="chat-meta">
+              <p id="chat-status" class="panel-status" role="status"></p>
+              <p id="chat-memory-context" class="context-copy"></p>
+            </div>
+          </section>
+          <section id="memory-section" class="feature-panel memory-panel" data-page="memory">
+            <header>
+              <div>
+                <p class="panel-kicker">Local-first</p>
+                <h2>Memory</h2>
+              </div>
+              <span id="memory-count" class="count-badge">0</span>
+            </header>
+            <form id="memory-form" class="memory-form">
+              <textarea id="memory-input" aria-label="Memory content" placeholder="Simpan informasi penting..." rows="3"></textarea>
+              <input id="memory-tags-input" aria-label="Memory tags" placeholder="tag1, tag2" />
+              <div class="form-actions">
+                <button id="save-memory-button" type="submit">Simpan memory</button>
+                <button id="cancel-memory-edit-button" class="secondary-button" type="button" hidden>Batal edit</button>
+              </div>
+            </form>
+            <input id="memory-search-input" class="memory-search" aria-label="Search memories" placeholder="Cari memory..." />
+            <p id="memory-search-mode" class="context-copy">Urutan terbaru. Ketik pertanyaan untuk hybrid semantic ranking lokal.</p>
+            <div id="memory-list" class="memory-list" aria-live="polite">
+              <p class="empty-copy">Belum ada memory tersimpan.</p>
+            </div>
+            <p id="memory-status" class="panel-status" role="status"></p>
+          </section>
+          <section id="skill-section" class="feature-panel skills-panel" data-page="skill">
+            <header>
+              <div>
+                <p class="panel-kicker">Safe automation</p>
+                <h2>Skills</h2>
+              </div>
+              <span id="skill-count" class="count-badge">0</span>
+            </header>
+            <div class="skills-layout">
+              <form id="skill-form" class="skill-form">
+                <input id="skill-name-input" aria-label="Skill name" placeholder="Nama skill" required />
+                <input id="skill-description-input" aria-label="Skill description" placeholder="Deskripsi singkat" />
+                <input id="skill-tags-input" aria-label="Skill tags" placeholder="tag1, tag2" />
+                <textarea id="skill-steps-input" aria-label="Skill steps JSON" rows="7">[
+  {"tool":"analyze_workspace","args":{"depth":3}},
+  {"tool":"grep_search","args":{"query":"__PARAM__query"}}
+]</textarea>
+                <div class="form-actions">
+                  <button id="save-skill-button" type="submit">Simpan skill</button>
+                  <button id="clear-skill-button" class="secondary-button" type="button">Kosongkan</button>
+                </div>
+              </form>
+              <div class="skill-runner">
+                <input id="skill-workspace-input" aria-label="Skill workspace root" placeholder="/path/absolut/workspace" />
+                <textarea id="skill-params-input" aria-label="Skill parameters JSON" rows="3">{"query":"TODO"}</textarea>
+                <div id="skill-list" class="skill-list" aria-live="polite">
+                  <p class="empty-copy">Belum ada skill tersimpan.</p>
+                </div>
+                <section id="skill-approval-panel" class="skill-approval-panel" hidden>
+                  <strong>Persetujuan perubahan workspace</strong>
+                  <p id="skill-approval-summary"></p>
+                  <pre id="skill-approval-preview"></pre>
+                  <label class="approval-check">
+                    <input id="skill-approval-checkbox" type="checkbox" />
+                    Saya memahami langkah di atas akan mengubah file workspace.
+                  </label>
+                  <div class="form-actions">
+                    <button id="approve-skill-button" type="button" disabled>Setujui dan jalankan</button>
+                    <button id="cancel-skill-approval-button" class="secondary-button" type="button">Batal</button>
+                  </div>
+                </section>
+                <pre id="skill-output" class="skill-output">Hasil eksekusi skill akan tampil di sini.</pre>
+              </div>
+            </div>
+            <p id="skill-status" class="panel-status" role="status">Skill read-only berjalan langsung; perubahan workspace memerlukan persetujuan baru setiap eksekusi.</p>
+          </section>
+          <section id="workflow-section" class="feature-panel workflow-panel" data-page="workflow">
+            <header>
+              <div>
+                <p class="panel-kicker">Native orchestration</p>
+                <h2>Workflow</h2>
+              </div>
+              <span id="workflow-count" class="count-badge">0</span>
+            </header>
+            <div class="automation-layout">
+              <form id="workflow-form" class="automation-form">
+                <input id="workflow-name-input" aria-label="Workflow name" placeholder="Nama workflow" required />
+                <input id="workflow-description-input" aria-label="Workflow description" placeholder="Deskripsi singkat" />
+                <textarea id="workflow-steps-input" aria-label="Workflow steps JSON" rows="8">[
+  {"kind":"builtin","target":"analyze_workspace","args":{"depth":3}},
+  {"kind":"builtin","target":"grep_search","args":{"query":"__PARAM__query"},"run_if":"do_search","parallel_group":"searches"}
+]</textarea>
+                <div class="form-actions">
+                  <button id="save-workflow-button" type="submit">Simpan workflow</button>
+                  <button id="clear-workflow-button" class="secondary-button" type="button">Kosongkan</button>
+                </div>
+              </form>
+              <div class="automation-runner">
+                <input id="workflow-workspace-input" aria-label="Workflow workspace root" placeholder="/path/absolut/workspace" />
+                <textarea id="workflow-params-input" aria-label="Workflow parameters JSON" rows="3">{"query":"TODO"}</textarea>
+                <div id="workflow-list" class="automation-list" aria-live="polite">
+                  <p class="empty-copy">Belum ada workflow tersimpan.</p>
+                </div>
+                <section id="workflow-approval-panel" class="skill-approval-panel" hidden>
+                  <strong>Persetujuan Workflow</strong>
+                  <p id="workflow-approval-summary"></p>
+                  <pre id="workflow-approval-preview"></pre>
+                  <label class="approval-check">
+                    <input id="workflow-approval-checkbox" type="checkbox" />
+                    Saya menyetujui langkah mutasi workspace dan pemanggilan MCP di atas.
+                  </label>
+                  <div class="form-actions">
+                    <button id="approve-workflow-button" type="button" disabled>Setujui dan jalankan</button>
+                    <button id="cancel-workflow-approval-button" class="secondary-button" type="button">Batal</button>
+                  </div>
+                </section>
+                <pre id="workflow-output" class="skill-output">Hasil workflow akan tampil di sini.</pre>
+              </div>
+            </div>
+            <p id="workflow-status" class="panel-status" role="status">Workflow dapat menggabungkan built-in tools dan MCP tools secara berurutan.</p>
+          </section>
+          <section id="mcp-section" class="feature-panel mcp-panel" data-page="mcp">
+            <header>
+              <div>
+                <p class="panel-kicker">Model Context Protocol</p>
+                <h2>MCP</h2>
+              </div>
+              <span id="mcp-count" class="count-badge">0</span>
+            </header>
+            <div class="automation-layout">
+              <form id="mcp-form" class="automation-form">
+                <input id="mcp-name-input" aria-label="MCP server name" placeholder="Nama server" required />
+                <input id="mcp-command-input" aria-label="MCP command" placeholder="npx atau /path/server" required />
+                <textarea id="mcp-args-input" aria-label="MCP args JSON" rows="3">[]</textarea>
+                <textarea id="mcp-env-input" aria-label="MCP environment JSON" rows="3">{}</textarea>
+                <div class="form-actions">
+                  <button id="save-mcp-button" type="submit">Simpan server</button>
+                  <button id="clear-mcp-button" class="secondary-button" type="button">Kosongkan</button>
+                </div>
+              </form>
+              <div class="automation-runner">
+                <div id="mcp-list" class="automation-list" aria-live="polite">
+                  <p class="empty-copy">Belum ada MCP server tersimpan.</p>
+                </div>
+                <div class="mcp-call-form">
+                  <input id="mcp-tool-input" aria-label="MCP tool name" placeholder="Nama tool MCP" />
+                  <textarea id="mcp-tool-args-input" aria-label="MCP tool arguments JSON" rows="3">{}</textarea>
+                  <button id="call-mcp-tool-button" type="button" disabled>Panggil tool terpilih</button>
+                </div>
+                <pre id="mcp-output" class="skill-output">Health, daftar tools, dan hasil MCP akan tampil di sini.</pre>
+              </div>
+            </div>
+            <p id="mcp-status" class="panel-status" role="status">Server MCP dijalankan langsung oleh Rust melalui stdio JSON-RPC dengan timeout.</p>
+          </section>
+          <section id="graphify-section" class="feature-panel graphify-panel" data-page="graphify">
+            <header>
+              <div>
+                <p class="panel-kicker">Knowledge graph</p>
+                <h2>Graphify</h2>
+              </div>
+              <span id="graphify-count" class="count-badge">0 nodes</span>
+            </header>
+            <div class="automation-layout">
+              <form id="graphify-form" class="automation-form">
+                <input id="graphify-workspace-input" aria-label="Graphify workspace root" placeholder="/path/absolut/workspace" required />
+                <input id="graphify-max-files-input" aria-label="Graphify max files" placeholder="Max files, default 500" />
+                <div class="form-actions">
+                  <button id="build-graphify-button" type="submit">Build graph</button>
+                  <button id="load-graphify-button" class="secondary-button" type="button">Muat terakhir</button>
+                </div>
+              </form>
+              <div class="automation-runner">
+                <input id="graphify-search-input" aria-label="Search Graphify nodes" placeholder="Cari node, file, konsep..." />
+                <div id="graphify-summary" class="graphify-summary">Belum ada graph.</div>
+                <svg id="graphify-canvas" class="graphify-canvas" viewBox="0 0 720 280" role="img" aria-label="Graphify visual canvas"></svg>
+                <div id="graphify-node-list" class="automation-list" aria-live="polite">
+                  <p class="empty-copy">Build graph untuk melihat node.</p>
+                </div>
+                <pre id="graphify-output" class="skill-output">Report Graphify akan tampil di sini.</pre>
+              </div>
+            </div>
+            <p id="graphify-status" class="panel-status" role="status">Graphify native membuat knowledge graph lokal dari file workspace tanpa Smara CLI.</p>
+          </section>
+          <section id="media-section" class="feature-panel media-panel" data-page="media">
+            <header>
+              <div>
+                <p class="panel-kicker">Native media APIs</p>
+                <h2>Media</h2>
+              </div>
+              <span id="media-count" class="count-badge">0</span>
+            </header>
+            <div class="automation-layout">
+              <form id="media-form" class="automation-form">
+                <input id="media-path-input" aria-label="Media file path" placeholder="/path/absolut/file.png atau voice.wav" required />
+                <input id="media-title-input" aria-label="Media title" placeholder="Judul media" />
+                <input id="media-tags-input" aria-label="Media tags" placeholder="tag1, tag2" />
+                <label class="approval-check">
+                  <input id="media-copy-checkbox" type="checkbox" checked />
+                  Salin file ke library Desktop
+                </label>
+                <div class="form-actions">
+                  <button id="import-media-button" type="submit">Import media</button>
+                  <button id="clear-media-button" class="secondary-button" type="button">Kosongkan</button>
+                </div>
+              </form>
+              <div class="automation-runner">
+                <input id="media-search-input" aria-label="Search media" placeholder="Cari title, kind, tag..." />
+                <div id="media-preview" class="media-preview">Preview media akan tampil di sini.</div>
+                <div id="media-list" class="automation-list" aria-live="polite">
+                  <p class="empty-copy">Belum ada media tersimpan.</p>
+                </div>
+                <pre id="media-output" class="skill-output">Metadata media akan tampil di sini.</pre>
+              </div>
+            </div>
+            <p id="media-status" class="panel-status" role="status">Media API lokal mendukung image, audio/voice, video, dan dokumen ringan.</p>
+          </section>
+          <section id="settings-section" class="feature-panel settings-panel" data-page="settings">
+            <header>
+              <div>
+                <p class="panel-kicker">Desktop config</p>
+                <h2>Settings</h2>
+              </div>
+              <span class="count-badge">Config</span>
+            </header>
+            <div class="settings-layout">
+              <section id="provider-health" class="provider-panel" hidden>
+                <div>
+                  <span id="provider-indicator" class="provider-indicator" aria-hidden="true"></span>
+                  <strong id="provider-name">Provider</strong>
+                  <span id="provider-state">memeriksa...</span>
+                </div>
+                <p id="provider-detail"></p>
+                <div class="provider-form">
+                  <select id="provider-select" aria-label="Provider">
+                    <option value="custom">custom</option>
+                    <option value="openai">openai</option>
+                    <option value="anthropic">anthropic</option>
+                    <option value="openrouter">openrouter</option>
+                    <option value="ollama">ollama</option>
+                  </select>
+                  <input id="provider-model-input" aria-label="Provider model" placeholder="Model" />
+                  <input id="provider-endpoint-input" aria-label="Provider endpoint" placeholder="http://127.0.0.1:20128/v1" />
+                </div>
+                <div class="provider-actions">
+                  <button id="save-provider-button" type="button">Simpan provider</button>
+                </div>
+              </section>
+              <section class="settings-note-panel">
+                <strong>Config Desktop</strong>
+                <p>Provider LLM, endpoint lokal, dan health check sekarang dipusatkan di Settings. Fitur lain tetap berjalan mandiri lewat IPC Rust-native.</p>
+                <ul>
+                  <li>Provider config tersimpan lokal di app config directory.</li>
+                  <li>Health check realtime mengikuti endpoint yang dipilih.</li>
+                  <li>Chat memakai provider ini untuk streaming response.</li>
+                </ul>
+              </section>
+            </div>
+            <p id="settings-status" class="panel-status" role="status">Settings siap untuk konfigurasi provider dan runtime lokal.</p>
+          </section>
+        </section>
+        <p class="feature-copy">Standalone Rust: Runtime · Chat + Memory Context · Memory · Skills · Workflow · MCP · Graphify · Media · Settings · History · Approval · Workspace · Built-in Tools · Provider Health</p>
+      </section>
+    </main>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
