@@ -20,6 +20,8 @@
     "@tauri-apps/api": "^2.0.0",
     "@tauri-apps/plugin-clipboard-manager": "^2.3.2",
     "@tauri-apps/plugin-dialog": "^2.7.1",
+    "@types/dompurify": "^3.0.5",
+    "dompurify": "^3.4.13",
     "marked": "^18.0.10",
     "mermaid": "^11.16.1"
   },

@@ -599,7 +599,7 @@ let mermaidRenderTimer: ReturnType<typeof setTimeout> | null = null;
 async function renderMermaidDiagrams(container: HTMLElement) {
   if (activeChatStreamRequestId) return;
 
-  const codeBlocks = container.querySelectorAll<HTMLElement>('pre code.language-mermaid, pre code.language-chart');
+  const codeBlocks = container.querySelectorAll<HTMLElement>('pre code');
   let idCounter = 0;
   for (const block of Array.from(codeBlocks)) {
     const parentPre = block.parentElement;
@@ -608,6 +608,13 @@ async function renderMermaidDiagrams(container: HTMLElement) {
 
     const rawChartCode = block.textContent?.trim() || '';
     if (!rawChartCode) continue;
+
+    const isExplicit = block.className.includes('language-mermaid') || block.className.includes('language-chart');
+    const startsWithKeyword = /^(graph\s+|flowchart\s+|sequenceDiagram|pie(\s+|$)|gantt|gitGraph|classDiagram|erDiagram|mindmap|stateDiagram|quadrantChart|sankey|timeline|xychart)/i.test(rawChartCode);
+
+    if (!isExplicit && !startsWithKeyword) {
+      continue;
+    }
 
     const chartId = `mermaid-svg-${Date.now()}-${++idCounter}`;
 
