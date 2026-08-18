@@ -1,6 +1,12 @@
 import { fileAssetUrl, invokeCommand, listenCommand } from './tauri-client';
 import { readImage as readClipboardImage } from '@tauri-apps/plugin-clipboard-manager';
+import { marked } from 'marked';
 import './styles.css';
+
+marked.setOptions({
+  gfm: true,
+  breaks: true,
+});
 
 type DesktopCapability = {
   id: string;
@@ -594,7 +600,17 @@ function renderChatMessages() {
     }
     const body = document.createElement('div');
     body.className = 'chat-message-body';
-    body.textContent = message.content || (message.id === `stream-${activeChatStreamRequestId}` ? 'Menyiapkan jawaban...' : '');
+    if (message.role === 'user') {
+      body.textContent = message.content;
+    } else {
+      if (message.content) {
+        body.innerHTML = marked.parse(message.content) as string;
+      } else if (message.id === `stream-${activeChatStreamRequestId}`) {
+        body.innerHTML = '<div class="typing-indicator"><span></span><span></span><span></span></div>';
+      } else {
+        body.textContent = '';
+      }
+    }
     item.append(body);
     if (message.attachments?.length) {
       item.append(renderChatAttachmentList(message.attachments, false));
@@ -834,10 +850,10 @@ function renderChatProcess(processes: ChatProcessEntry[], running: boolean) {
   const summary = document.createElement('summary');
   const state = document.createElement('span');
   state.className = 'chat-process-state';
-  state.textContent = running ? chatProcessLabel(processes[processes.length - 1]?.kind ?? 'thinking') : 'Process';
+  state.textContent = running ? `${chatProcessLabel(processes[processes.length - 1]?.kind ?? 'thinking')}...` : 'Thinking Process';
   const count = document.createElement('span');
   count.className = 'chat-process-count';
-  count.textContent = running ? 'sedang berjalan' : `${processes.length} langkah`;
+  count.textContent = running ? 'sedang berjalan' : `${processes.length} langkah · Selesai`;
   summary.append(state, count);
 
   const list = document.createElement('div');
