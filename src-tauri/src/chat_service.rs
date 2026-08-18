@@ -171,6 +171,89 @@ fn anthropic_url(config: &DesktopProviderConfig) -> String {
     }
 }
 
+fn workspace_scan_context(query: &str) -> Option<String> {
+    let home = std::env::var("HOME").unwrap_or_else(|_| "/home/cahya".to_string());
+    let mut candidate_paths = vec![
+        PathBuf::from(&home).join("2026"),
+        PathBuf::from(&home),
+    ];
+    for word in query.split_whitespace() {
+        let clean = word.trim_matches(|c| c == '\'' || c == '"' || c == '`' || c == ',' || c == '.');
+        let p = Path::new(clean);
+        if p.exists() && p.is_dir() {
+            candidate_paths.insert(0, p.to_path_buf());
+        }
+    }
+
+    let q_lower = query.to_lowercase();
+    let is_exploration = q_lower.contains("2026")
+        || q_lower.contains("folder")
+        || q_lower.contains("direktori")
+        || q_lower.contains("analis")
+        || q_lower.contains("workspace")
+        || q_lower.contains("explore")
+        || q_lower.contains("file");
+
+    if !is_exploration {
+        return None;
+    }
+
+    let target_dir = candidate_paths.into_iter().find(|p| p.exists() && p.is_dir())?;
+    if let Ok(entries) = std::fs::read_dir(&target_dir) {
+        let mut list = Vec::new();
+        for entry in entries.flatten() {
+            let name = entry.file_name().to_string_lossy().to_string();
+            if name.starts_with('.') || name == "node_modules" || name == "target" || name == "dist" {
+                continue;
+            }
+            let is_dir = entry.file_type().map(|t| t.is_dir()).unwrap_or(false);
+            if is_dir {
+                list.push(format!("- [DIR]  {name}/"));
+            } else {
+                list.push(format!("- [FILE] {name}"));
+            }
+        }
+        if !list.is_empty() {
+            return Some(format!(
+                "Local Workspace Content for `{}`:\n{}",
+                target_dir.display(),
+                list.join("\n")
+            ));
+        }
+    }
+    None
+}
+
+fn default_system_prompt(memories: &[DesktopMemory], messages: &[DesktopChatMessage]) -> String {
+    let query = messages.last().map(|m| m.content.as_str()).unwrap_or_default();
+    let mut parts = Vec::new();
+    parts.push(
+        "You are Smara, an advanced, autonomous AI developer assistant and local system agent running natively on the user's Linux computer.\n\
+        You have direct capability to explore local workspaces, inspect code, analyze files, and assist with any engineering or system tasks.\n\
+        Never tell the user you lack access to their PC or filesystem—you are the user's local autonomous developer assistant. When asked about folders, projects, or files, analyze them directly and provide helpful, structured, and insightful answers."
+            .to_string(),
+    );
+
+    let home = std::env::var("HOME").unwrap_or_else(|_| "/home/cahya".to_string());
+    let agents_md_path = std::path::Path::new(&home).join(".smara").join("AGENTS.md");
+    if let Ok(agents_content) = std::fs::read_to_string(&agents_md_path) {
+        let trimmed = agents_content.trim();
+        if !trimmed.is_empty() {
+            parts.push(format!("# Local Agent Guidelines & Protocols (~/.smara/AGENTS.md):\n{trimmed}"));
+        }
+    }
+
+    if let Some(workspace_info) = workspace_scan_context(query) {
+        parts.push(format!("# Automatically Discovered Local Filesystem Context:\n{workspace_info}"));
+    }
+
+    if let Some(context) = memory_context(memories) {
+        parts.push(format!("# Relevant Persistent Memory Context:\n{context}"));
+    }
+
+    parts.join("\n\n")
+}
+
 fn memory_context(memories: &[DesktopMemory]) -> Option<String> {
     if memories.is_empty() {
         return None;
@@ -362,12 +445,11 @@ pub(crate) fn request_completion(
         return request_anthropic_completion(config, messages, memories);
     }
     let mut provider_messages = Vec::new();
-    if let Some(context) = memory_context(memories) {
-        provider_messages.push(json!({
-            "role": "system",
-            "content": context,
-        }));
-    }
+    let sys_prompt = default_system_prompt(memories, messages);
+    provider_messages.push(json!({
+        "role": "system",
+        "content": sys_prompt,
+    }));
     provider_messages.extend(messages.iter().map(openai_message));
     let payload = json!({
         "model": config.model,
@@ -410,9 +492,8 @@ fn request_anthropic_completion(
         "max_tokens": 4096,
         "messages": messages.iter().map(anthropic_message).collect::<Vec<_>>(),
     });
-    if let Some(context) = memory_context(memories) {
-        payload["system"] = Value::String(context);
-    }
+    let sys_prompt = default_system_prompt(memories, messages);
+    payload["system"] = Value::String(sys_prompt);
     let client = Client::builder()
         .timeout(CHAT_TIMEOUT)
         .build()
@@ -551,9 +632,11 @@ fn request_streaming_completion(
         );
     }
     let mut provider_messages = Vec::new();
-    if let Some(context) = memory_context(memories) {
-        provider_messages.push(json!({"role": "system", "content": context}));
-    }
+    let sys_prompt = default_system_prompt(memories, messages);
+    provider_messages.push(json!({
+        "role": "system",
+        "content": sys_prompt,
+    }));
     provider_messages.extend(messages.iter().map(openai_message));
     let payload = json!({
         "model": config.model,
@@ -593,9 +676,8 @@ fn request_anthropic_streaming_completion(
         "stream": true,
         "messages": messages.iter().map(anthropic_message).collect::<Vec<_>>(),
     });
-    if let Some(context) = memory_context(memories) {
-        payload["system"] = Value::String(context);
-    }
+    let sys_prompt = default_system_prompt(memories, messages);
+    payload["system"] = Value::String(sys_prompt);
     let client = Client::builder()
         .timeout(CHAT_TIMEOUT)
         .build()
