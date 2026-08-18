@@ -2,11 +2,13 @@ import { fileAssetUrl, invokeCommand, listenCommand } from './tauri-client';
 import { readImage as readClipboardImage } from '@tauri-apps/plugin-clipboard-manager';
 import { marked } from 'marked';
 import mermaid from 'mermaid';
-import DOMPurify from 'dompurify';
+import DOMPurifyFactory from 'dompurify';
 import './styles.css';
 
 if (typeof window !== 'undefined') {
-  (window as any).DOMPurify = DOMPurify;
+  const dpInstance = DOMPurifyFactory(window);
+  Object.assign(DOMPurifyFactory, dpInstance);
+  (window as any).DOMPurify = DOMPurifyFactory;
 }
 
 marked.setOptions({
@@ -614,8 +616,13 @@ async function renderMermaidDiagrams(container: HTMLElement) {
     const rawChartCode = block.textContent?.trim() || '';
     if (!rawChartCode) continue;
 
+    const cleanChartCode = rawChartCode
+      .replace(/^```(?:mermaid|chart|graph|flowchart|pie)?\s*/i, '')
+      .replace(/```\s*$/i, '')
+      .trim();
+
     const isExplicit = block.className.includes('language-mermaid') || block.className.includes('language-chart');
-    const startsWithKeyword = /^(graph\s+|flowchart\s+|sequenceDiagram|pie(\s+|$)|gantt|gitGraph|classDiagram|erDiagram|mindmap|stateDiagram|quadrantChart|sankey|timeline|xychart)/i.test(rawChartCode);
+    const startsWithKeyword = /^(graph\s+|flowchart\s+|sequenceDiagram|pie(\s+|$)|gantt|gitGraph|classDiagram|erDiagram|mindmap|stateDiagram|quadrantChart|sankey|timeline|xychart)/i.test(cleanChartCode);
 
     if (!isExplicit && !startsWithKeyword) {
       continue;
@@ -624,10 +631,10 @@ async function renderMermaidDiagrams(container: HTMLElement) {
     const chartId = `mermaid-svg-${Date.now()}-${++idCounter}`;
 
     try {
-      const isValid = await mermaid.parse(rawChartCode, { suppressErrors: true });
+      const isValid = await mermaid.parse(cleanChartCode, { suppressErrors: true });
       if (!isValid) continue;
 
-      const { svg } = await mermaid.render(chartId, rawChartCode);
+      const { svg } = await mermaid.render(chartId, cleanChartCode);
       if (!svg || svg.includes('Syntax error') || svg.includes('error-icon')) {
         continue;
       }
