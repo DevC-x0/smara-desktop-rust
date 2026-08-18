@@ -173,6 +173,215 @@ pub fn list_desktop_builtin_tools_internal() -> Vec<DesktopBuiltinTool> {
     ]
 }
 
+pub fn export_openai_tools_schema() -> Vec<Value> {
+    vec![
+        serde_json::json!({
+            "type": "function",
+            "function": {
+                "name": "list_dir",
+                "description": "List files and directories in a workspace directory.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "path": {
+                            "type": "string",
+                            "description": "Relative directory path (e.g. '.' or 'src')"
+                        }
+                    },
+                    "required": ["path"]
+                }
+            }
+        }),
+        serde_json::json!({
+            "type": "function",
+            "function": {
+                "name": "read_file",
+                "description": "Read UTF-8 text content of a workspace file.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "path": {
+                            "type": "string",
+                            "description": "Relative file path"
+                        }
+                    },
+                    "required": ["path"]
+                }
+            }
+        }),
+        serde_json::json!({
+            "type": "function",
+            "function": {
+                "name": "view_file",
+                "description": "Read a specific line range from a workspace file.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "path": { "type": "string", "description": "Relative file path" },
+                        "start_line": { "type": "integer", "description": "1-based starting line" },
+                        "end_line": { "type": "integer", "description": "1-based ending line" }
+                    },
+                    "required": ["path", "start_line", "end_line"]
+                }
+            }
+        }),
+        serde_json::json!({
+            "type": "function",
+            "function": {
+                "name": "grep_search",
+                "description": "Search text or regex pattern across workspace files.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "query": { "type": "string", "description": "Text pattern to search" },
+                        "path": { "type": "string", "description": "Optional directory path" }
+                    },
+                    "required": ["query"]
+                }
+            }
+        }),
+        serde_json::json!({
+            "type": "function",
+            "function": {
+                "name": "search_path",
+                "description": "Search for files and directories by filename pattern.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "query": { "type": "string", "description": "Filename pattern to match" }
+                    },
+                    "required": ["query"]
+                }
+            }
+        }),
+        serde_json::json!({
+            "type": "function",
+            "function": {
+                "name": "analyze_workspace",
+                "description": "Summarize files, directories, and structure of the workspace.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "depth": { "type": "integer", "description": "Scan depth (default 2)" }
+                    }
+                }
+            }
+        }),
+        serde_json::json!({
+            "type": "function",
+            "function": {
+                "name": "glob",
+                "description": "Find files matching a glob pattern (e.g. '**/*.ts').",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "pattern": { "type": "string", "description": "Glob pattern" }
+                    },
+                    "required": ["pattern"]
+                }
+            }
+        }),
+        serde_json::json!({
+            "type": "function",
+            "function": {
+                "name": "get_file_info",
+                "description": "Get metadata (size, modified time, type) of a file or directory.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "path": { "type": "string", "description": "Relative path" }
+                    },
+                    "required": ["path"]
+                }
+            }
+        }),
+        serde_json::json!({
+            "type": "function",
+            "function": {
+                "name": "get_git_status",
+                "description": "Get git repository status (modified, added, untracked files).",
+                "parameters": {
+                    "type": "object",
+                    "properties": {}
+                }
+            }
+        }),
+        serde_json::json!({
+            "type": "function",
+            "function": {
+                "name": "git_diff",
+                "description": "Get git diff changes.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "staged": { "type": "boolean", "description": "Check staged changes" }
+                    }
+                }
+            }
+        }),
+        serde_json::json!({
+            "type": "function",
+            "function": {
+                "name": "write_file",
+                "description": "Write or overwrite a file in the workspace.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "path": { "type": "string", "description": "Relative file path" },
+                        "content": { "type": "string", "description": "File content to write" }
+                    },
+                    "required": ["path", "content"]
+                }
+            }
+        }),
+        serde_json::json!({
+            "type": "function",
+            "function": {
+                "name": "edit_file",
+                "description": "Replace a unique text block in a workspace file.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "path": { "type": "string", "description": "Relative file path" },
+                        "target": { "type": "string", "description": "Exact text to replace" },
+                        "replacement": { "type": "string", "description": "Replacement text" }
+                    },
+                    "required": ["path", "target", "replacement"]
+                }
+            }
+        }),
+        serde_json::json!({
+            "type": "function",
+            "function": {
+                "name": "apply_diff",
+                "description": "Apply a unified diff patch to a workspace file.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "path": { "type": "string", "description": "Relative file path" },
+                        "patch": { "type": "string", "description": "Unified diff patch" }
+                    },
+                    "required": ["path", "patch"]
+                }
+            }
+        })
+    ]
+}
+
+pub fn export_anthropic_tools_schema() -> Vec<Value> {
+    export_openai_tools_schema()
+        .into_iter()
+        .filter_map(|item| {
+            let func = item.get("function")?;
+            Some(serde_json::json!({
+                "name": func.get("name")?,
+                "description": func.get("description")?,
+                "input_schema": func.get("parameters")?,
+            }))
+        })
+        .collect()
+}
+
 fn tool(
     name: &'static str,
     description: &'static str,

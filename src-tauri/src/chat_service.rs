@@ -1,4 +1,7 @@
 use crate::app_state::now_ms;
+use crate::builtin_tools::{
+    export_openai_tools_schema, run_desktop_builtin_tool_internal, DesktopBuiltinToolRequest,
+};
 use crate::improvement_service::learn_from_desktop_chat;
 use crate::memory_service::{relevant_memories, DesktopMemory};
 use crate::provider_service::{load_provider_config, DesktopProviderConfig};
@@ -23,6 +26,19 @@ const MAX_CHAT_ATTACHMENTS: usize = 5;
 const MAX_CHAT_ATTACHMENT_BYTES: usize = 10 * 1024 * 1024;
 const MAX_CHAT_ATTACHMENTS_TOTAL_BYTES: usize = 20 * 1024 * 1024;
 const MAX_ATTACHMENT_TEXT_CHARS: usize = 100_000;
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct DesktopToolCall {
+    pub id: String,
+    pub name: String,
+    pub arguments: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct StreamCompletionOutput {
+    pub content: String,
+    pub tool_calls: Vec<DesktopToolCall>,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct DesktopChatAttachment {
@@ -528,7 +544,7 @@ fn stream_response_lines(
     mut on_reasoning: impl FnMut(&str),
     mut on_delta: impl FnMut(&str),
     mut should_cancel: impl FnMut() -> bool,
-) -> Result<String, String> {
+) -> Result<StreamCompletionOutput, String> {
     let status = response.status();
     if !status.is_success() {
         let body = response
@@ -538,6 +554,7 @@ fn stream_response_lines(
     }
     let mut full = String::new();
     let mut in_think_tag = false;
+    let mut tool_calls_map: std::collections::BTreeMap<usize, DesktopToolCall> = std::collections::BTreeMap::new();
 
     for line in BufReader::new(response).lines() {
         if should_cancel() {
@@ -564,7 +581,28 @@ fn stream_response_lines(
             on_reasoning(reasoning);
         }
 
-        // 2. Check content delta (with embedded <think> handling)
+        // 2. Check tool_calls delta
+        if let Some(tool_calls) = event.pointer("/choices/0/delta/tool_calls").and_then(Value::as_array) {
+            for tc in tool_calls {
+                let index = tc.get("index").and_then(Value::as_u64).unwrap_or(0) as usize;
+                let entry = tool_calls_map.entry(index).or_insert_with(|| DesktopToolCall {
+                    id: String::new(),
+                    name: String::new(),
+                    arguments: String::new(),
+                });
+                if let Some(id) = tc.get("id").and_then(Value::as_str) {
+                    entry.id.push_str(id);
+                }
+                if let Some(name) = tc.pointer("/function/name").and_then(Value::as_str) {
+                    entry.name.push_str(name);
+                }
+                if let Some(args) = tc.pointer("/function/arguments").and_then(Value::as_str) {
+                    entry.arguments.push_str(args);
+                }
+            }
+        }
+
+        // 3. Check content delta (with embedded <think> handling)
         if let Some(content) = event.pointer("/choices/0/delta/content")
             .and_then(Value::as_str)
             .filter(|s| !s.is_empty())
@@ -607,42 +645,41 @@ fn stream_response_lines(
             }
         }
     }
-    if full.trim().is_empty() {
-        return Err("Provider stream completed without text content.".to_string());
+    let tool_calls: Vec<DesktopToolCall> = tool_calls_map.into_values().filter(|tc| !tc.name.is_empty()).collect();
+    if full.trim().is_empty() && tool_calls.is_empty() {
+        return Err("Provider stream completed without text content or tool calls.".to_string());
     }
-    Ok(full)
+    Ok(StreamCompletionOutput {
+        content: full,
+        tool_calls,
+    })
 }
 
 fn request_streaming_completion(
     config: &DesktopProviderConfig,
-    messages: &[DesktopChatMessage],
-    memories: &[DesktopMemory],
+    messages: &[Value],
+    tools: &[Value],
     on_reasoning: impl FnMut(&str),
     on_delta: impl FnMut(&str),
     should_cancel: impl FnMut() -> bool,
-) -> Result<String, String> {
+) -> Result<StreamCompletionOutput, String> {
     if config.provider == "anthropic" {
         return request_anthropic_streaming_completion(
             config,
             messages,
-            memories,
             on_reasoning,
             on_delta,
             should_cancel,
         );
     }
-    let mut provider_messages = Vec::new();
-    let sys_prompt = default_system_prompt(memories, messages);
-    provider_messages.push(json!({
-        "role": "system",
-        "content": sys_prompt,
-    }));
-    provider_messages.extend(messages.iter().map(openai_message));
-    let payload = json!({
+    let mut payload = json!({
         "model": config.model,
         "stream": true,
-        "messages": provider_messages,
+        "messages": messages,
     });
+    if !tools.is_empty() {
+        payload["tools"] = json!(tools);
+    }
     let client = Client::builder()
         .timeout(CHAT_TIMEOUT)
         .build()
@@ -664,20 +701,17 @@ fn request_streaming_completion(
 
 fn request_anthropic_streaming_completion(
     config: &DesktopProviderConfig,
-    messages: &[DesktopChatMessage],
-    memories: &[DesktopMemory],
+    messages: &[Value],
     mut on_reasoning: impl FnMut(&str),
     mut on_delta: impl FnMut(&str),
     mut should_cancel: impl FnMut() -> bool,
-) -> Result<String, String> {
-    let mut payload = json!({
+) -> Result<StreamCompletionOutput, String> {
+    let payload = json!({
         "model": config.model,
         "max_tokens": 4096,
         "stream": true,
-        "messages": messages.iter().map(anthropic_message).collect::<Vec<_>>(),
+        "messages": messages,
     });
-    let sys_prompt = default_system_prompt(memories, messages);
-    payload["system"] = Value::String(sys_prompt);
     let client = Client::builder()
         .timeout(CHAT_TIMEOUT)
         .build()
@@ -733,7 +767,10 @@ fn request_anthropic_streaming_completion(
     if full.trim().is_empty() {
         return Err("Anthropic stream completed without text content.".to_string());
     }
-    Ok(full)
+    Ok(StreamCompletionOutput {
+        content: full,
+        tool_calls: Vec::new(),
+    })
 }
 
 fn send_chat_with(
@@ -895,54 +932,154 @@ pub async fn stream_desktop_chat(
     let request_id_for_finish = request_id.clone();
     let request_id_for_done = request_id.clone();
     tauri::async_runtime::spawn_blocking(move || {
-        let session = send_chat_with(&path, request, memories, |messages, memories| {
-            let event_app_for_thinking = event_app_for_delta.clone();
-            let request_id_for_thinking = request_id.clone();
-            let result = request_streaming_completion(
-                &config,
-                messages,
-                memories,
-                move |reasoning| {
-                    let _ = event_app_for_thinking.emit(
-                        "desktop-chat-stream",
-                        DesktopChatStreamEvent {
-                            request_id: request_id_for_thinking.clone(),
-                            kind: "thinking_delta".to_string(),
-                            delta: reasoning.to_string(),
-                        },
+        let session = send_chat_with(&path, request, memories, |initial_messages, memories| {
+            let home = std::env::var("HOME").unwrap_or_else(|_| "/home/cahya".to_string());
+            let workspace_root = PathBuf::from(&home).join("2026");
+            let workspace_root_str = if workspace_root.exists() {
+                workspace_root.to_string_lossy().to_string()
+            } else {
+                home
+            };
+
+            let mut dynamic_messages: Vec<Value> = Vec::new();
+            let sys_prompt = default_system_prompt(memories, initial_messages);
+            dynamic_messages.push(json!({
+                "role": "system",
+                "content": sys_prompt,
+            }));
+            dynamic_messages.extend(initial_messages.iter().map(openai_message));
+
+            let tools_schema = export_openai_tools_schema();
+            let mut final_content = String::new();
+            let max_turns = 8;
+
+            for _turn in 0..max_turns {
+                if stream_state.is_cancelled(&request_id_for_cancel).unwrap_or(true) {
+                    return Err("Streaming Chat request was cancelled.".to_string());
+                }
+
+                let event_app_for_thinking = event_app_for_delta.clone();
+                let req_id_for_thinking = request_id_for_cancel.clone();
+                let event_app_for_delta_inner = event_app_for_delta.clone();
+                let req_id_for_delta_inner = request_id_for_cancel.clone();
+                let state_for_cancel = stream_state.clone();
+                let req_id_for_cancel_inner = request_id_for_cancel.clone();
+
+                let stream_out = request_streaming_completion(
+                    &config,
+                    &dynamic_messages,
+                    &tools_schema,
+                    move |reasoning| {
+                        let _ = event_app_for_thinking.emit(
+                            "desktop-chat-stream",
+                            DesktopChatStreamEvent {
+                                request_id: req_id_for_thinking.clone(),
+                                kind: "thinking_delta".to_string(),
+                                delta: reasoning.to_string(),
+                            },
+                        );
+                    },
+                    move |delta| {
+                        let _ = event_app_for_delta_inner.emit(
+                            "desktop-chat-stream",
+                            DesktopChatStreamEvent {
+                                request_id: req_id_for_delta_inner.clone(),
+                                kind: "delta".to_string(),
+                                delta: delta.to_string(),
+                            },
+                        );
+                    },
+                    move || state_for_cancel.is_cancelled(&req_id_for_cancel_inner).unwrap_or(true),
+                )?;
+
+                if !stream_out.content.is_empty() {
+                    final_content.push_str(&stream_out.content);
+                }
+
+                if !stream_out.tool_calls.is_empty() {
+                    let mut assistant_tool_calls_json = Vec::new();
+                    for tc in &stream_out.tool_calls {
+                        assistant_tool_calls_json.push(json!({
+                            "id": tc.id,
+                            "type": "function",
+                            "function": {
+                                "name": tc.name,
+                                "arguments": tc.arguments,
+                            }
+                        }));
+                    }
+                    dynamic_messages.push(json!({
+                        "role": "assistant",
+                        "content": stream_out.content,
+                        "tool_calls": assistant_tool_calls_json,
+                    }));
+
+                    for tc in stream_out.tool_calls {
+                        emit_chat_stream_event(
+                            &event_app_for_done,
+                            &request_id_for_done,
+                            "tool_start",
+                            format!("🛠️ Eksekusi Tool: `{}` ({})", tc.name, tc.arguments),
+                        );
+
+                        let parsed_args: Value = serde_json::from_str(&tc.arguments)
+                            .unwrap_or_else(|_| json!({}));
+
+                        let exec_result = run_desktop_builtin_tool_internal(DesktopBuiltinToolRequest {
+                            tool: tc.name.clone(),
+                            workspace_root: workspace_root_str.clone(),
+                            args: parsed_args,
+                            approval: None,
+                        });
+
+                        let output_text = match exec_result {
+                            Ok(res) => {
+                                let preview = if res.output.len() > 160 {
+                                    format!("{}...", &res.output[..160])
+                                } else {
+                                    res.output.clone()
+                                };
+                                emit_chat_stream_event(
+                                    &event_app_for_done,
+                                    &request_id_for_done,
+                                    "tool_done",
+                                    format!("✓ Hasil `{}`: {}", tc.name, preview.trim()),
+                                );
+                                res.output
+                            }
+                            Err(err) => {
+                                emit_chat_stream_event(
+                                    &event_app_for_done,
+                                    &request_id_for_done,
+                                    "error",
+                                    format!("✕ Gagal `{}`: {}", tc.name, err),
+                                );
+                                format!("Error executing tool {}: {}", tc.name, err)
+                            }
+                        };
+
+                        dynamic_messages.push(json!({
+                            "role": "tool",
+                            "tool_call_id": tc.id,
+                            "name": tc.name,
+                            "content": output_text,
+                        }));
+                    }
+                } else {
+                    emit_chat_stream_event(
+                        &event_app_for_done,
+                        &request_id_for_done,
+                        "tool_done",
+                        "Provider stream selesai.",
                     );
-                },
-                |delta| {
-                    let _ = event_app_for_delta.emit(
-                        "desktop-chat-stream",
-                        DesktopChatStreamEvent {
-                            request_id: request_id.clone(),
-                            kind: "delta".to_string(),
-                            delta: delta.to_string(),
-                        },
-                    );
-                },
-                || {
-                    stream_state
-                        .is_cancelled(&request_id_for_cancel)
-                        .unwrap_or(true)
-                },
-            );
-            match &result {
-                Ok(_) => emit_chat_stream_event(
-                    &event_app_for_done,
-                    &request_id_for_done,
-                    "tool_done",
-                    "Provider stream selesai.",
-                ),
-                Err(error) => emit_chat_stream_event(
-                    &event_app_for_done,
-                    &request_id_for_done,
-                    "error",
-                    error.clone(),
-                ),
+                    break;
+                }
             }
-            result
+
+            if final_content.trim().is_empty() {
+                final_content = "Selesai memproses aksi dan tools.".to_string();
+            }
+            Ok(final_content)
         })?;
         for event in learn_from_desktop_chat(&learning_app, &config, &session).unwrap_or_default() {
             emit_chat_stream_event(&learning_app, &request_id_for_done, &event.kind, event.text);
@@ -978,7 +1115,7 @@ mod tests {
     };
     use crate::app_state::now_ms;
     use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
-    use serde_json::Value;
+    use serde_json::{json, Value};
     use std::fs;
     use std::io::{Read, Write};
     use std::net::TcpListener;
@@ -1159,19 +1296,17 @@ mod tests {
             let mut deltas = Vec::new();
             let response = request_streaming_completion(
                 &config,
-                &[DesktopChatMessage {
-                    id: "stream-user".to_string(),
-                    role: "user".to_string(),
-                    content: "stream please".to_string(),
-                    attachments: Vec::new(),
-                    created_at_ms: now_ms(),
-                }],
+                &[json!({
+                    "role": "user",
+                    "content": "stream please",
+                })],
                 &[],
+                |_reasoning| {},
                 |delta| deltas.push(delta.to_string()),
                 || false,
             )
             .unwrap();
-            assert_eq!(response, expected);
+            assert_eq!(response.content, expected);
             assert_eq!(deltas.concat(), expected);
             server.join().unwrap();
         }
