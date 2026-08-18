@@ -2,6 +2,7 @@ mod app_service;
 mod app_state;
 mod builtin_tools;
 mod chat_service;
+mod export_service;
 mod graphify_service;
 mod improvement_service;
 mod mcp_service;
@@ -25,6 +26,7 @@ use chat_service::{
     move_desktop_chat_session_workspace, send_desktop_chat, stream_desktop_chat,
     DesktopChatStreamState,
 };
+use export_service::{export_desktop_chat_session, save_exported_chat};
 use graphify_service::{build_desktop_graphify, get_desktop_graphify, search_desktop_graphify};
 use mcp_service::{
     call_desktop_mcp_tool, check_desktop_mcp_server, delete_desktop_mcp_server,
@@ -73,6 +75,8 @@ pub fn run() {
             cancel_desktop_chat_stream,
             delete_desktop_chat_session,
             move_desktop_chat_session_workspace,
+            export_desktop_chat_session,
+            save_exported_chat,
             build_desktop_graphify,
             get_desktop_graphify,
             search_desktop_graphify,

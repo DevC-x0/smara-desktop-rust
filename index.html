@@ -125,6 +125,14 @@
             <span class="status-pill">Standalone Rust</span>
             <span class="status-pill">Built-in Tools</span>
           </div>
+          <button id="topbar-search-btn" class="topbar-search-trigger" type="button" title="Quick Search & Command Palette (Ctrl+K)">
+            <svg class="search-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="11" cy="11" r="8"></circle>
+              <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+            </svg>
+            <span class="search-trigger-text">Cari aksi, sesi, file...</span>
+            <kbd class="shortcut-badge">Ctrl+K</kbd>
+          </button>
           <div class="topbar-actions">
             <button id="refresh-provider-button" class="btn btn-secondary btn-sm" type="button">Check Provider</button>
             <span class="online-pill"><span class="pulse-dot"></span> Local Engine</span>
@@ -318,6 +326,7 @@
                 <button id="new-chat-button" class="btn btn-secondary btn-sm" type="button">Sesi Baru</button>
                 <button id="retry-chat-button" class="btn btn-secondary btn-sm" type="button" disabled>Retry</button>
                 <button id="cancel-chat-stream-button" class="btn btn-danger btn-sm" type="button" hidden>Batal</button>
+                <button id="chat-export-btn" class="btn btn-secondary btn-sm" type="button" title="Ekspor riwayat percakapan sesi ini">📥 Ekspor</button>
                 <button id="delete-chat-button" class="btn btn-danger btn-sm" type="button" disabled>Hapus</button>
               </div>
             </div>
@@ -767,6 +776,91 @@
           <button id="file-preview-attach-btn" class="btn btn-secondary" type="button">📎 Lampirkan ke Chat</button>
           <button id="file-preview-copy-btn" class="btn btn-secondary" type="button">📋 Salin Isi</button>
           <button id="close-file-preview-button" class="btn btn-primary" type="button">Tutup</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Spotlight Command Palette Modal (Ctrl+K) -->
+    <div id="command-palette-modal" class="app-modal command-palette-overlay" hidden>
+      <div class="app-modal-backdrop command-palette-backdrop"></div>
+      <div class="command-palette-container">
+        <div class="command-palette-search-bar">
+          <svg class="palette-search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="11" cy="11" r="8"></circle>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+          </svg>
+          <input type="text" id="command-palette-input" class="command-palette-input" placeholder="Ketik perintah, nama file, atau cari sesi chat..." autocomplete="off" />
+          <kbd class="palette-esc-badge">ESC</kbd>
+        </div>
+        <div class="command-palette-filter-tabs">
+          <button class="palette-filter-chip active" data-filter="all" type="button">Semua</button>
+          <button class="palette-filter-chip" data-filter="actions" type="button">⚡ Aksi</button>
+          <button class="palette-filter-chip" data-filter="sessions" type="button">💬 Sesi</button>
+          <button class="palette-filter-chip" data-filter="files" type="button">📁 Files</button>
+          <button class="palette-filter-chip" data-filter="memories" type="button">🧠 Memori</button>
+        </div>
+        <div id="command-palette-results" class="command-palette-results-list" role="listbox">
+          <!-- Populated dynamically -->
+        </div>
+        <div class="command-palette-footer">
+          <div class="palette-shortcuts-hint">
+            <span><kbd>↑</kbd><kbd>↓</kbd> Navigasi</span>
+            <span><kbd>↵</kbd> Buka</span>
+            <span><kbd>Esc</kbd> Tutup</span>
+          </div>
+          <span class="palette-brand-tag">Smara Quick Command</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Chat Export Modal Dialog -->
+    <div id="chat-export-modal" class="app-modal" hidden>
+      <div class="app-modal-backdrop"></div>
+      <div class="app-modal-dialog modal-dialog-md">
+        <div class="app-modal-header">
+          <div class="modal-title-with-meta">
+            <h3>📥 Ekspor Riwayat Sesi</h3>
+            <span id="export-session-title-badge" class="modal-file-path-badge"></span>
+          </div>
+          <button id="close-chat-export-modal-button" class="btn-icon" type="button">✕</button>
+        </div>
+        <div class="app-modal-body">
+          <p class="export-modal-desc">Pilih format ekspor yang diinginkan untuk membagikan atau mengarsipkan percakapan ini:</p>
+          <div class="export-options-grid">
+            <div class="export-option-card active" data-format="markdown">
+              <div class="export-card-icon">📝</div>
+              <div class="export-card-info">
+                <h4>Markdown (.md)</h4>
+                <p>Dokumentasi rapi dengan timestamp, metadata workspace, dan trajectory agent.</p>
+              </div>
+            </div>
+            <div class="export-option-card" data-format="html">
+              <div class="export-card-icon">🌐</div>
+              <div class="export-card-info">
+                <h4>HTML Standalone (.html)</h4>
+                <p>Dokumen visual mandiri dengan tema gelap Smara. Siap dibuka di browser atau print ke PDF.</p>
+              </div>
+            </div>
+            <div class="export-option-card" data-format="json">
+              <div class="export-card-icon">📜</div>
+              <div class="export-card-info">
+                <h4>JSON Raw (.json)</h4>
+                <p>Struktur data utuh untuk backup, integrasi eksternal, atau import ulang.</p>
+              </div>
+            </div>
+          </div>
+          <div class="export-preview-box">
+            <div class="export-preview-header">
+              <span id="export-preview-label">Preview Markdown:</span>
+              <span id="export-file-name-preview" class="export-filename">chat.md</span>
+            </div>
+            <textarea id="export-preview-textarea" class="export-preview-textarea" readonly></textarea>
+          </div>
+        </div>
+        <div class="app-modal-footer">
+          <button id="cancel-chat-export-button" class="btn btn-secondary" type="button">Batal</button>
+          <button id="copy-chat-export-button" class="btn btn-secondary" type="button">📋 Salin Isi</button>
+          <button id="download-chat-export-button" class="btn btn-primary" type="button">💾 Download File</button>
         </div>
       </div>
     </div>

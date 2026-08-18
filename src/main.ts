@@ -118,6 +118,24 @@ type WorkspaceFileContent = {
   is_binary: boolean;
 };
 
+type DesktopExportResult = {
+  session_id: string;
+  title: string;
+  format: string;
+  content: string;
+  file_name: string;
+};
+
+type CommandPaletteItem = {
+  id: string;
+  category: 'action' | 'session' | 'file' | 'memory';
+  title: string;
+  description: string;
+  icon: string;
+  badge: string;
+  onSelect: () => void | Promise<void>;
+};
+
 type DesktopChatMessage = {
   id: string;
   role: string;
@@ -500,6 +518,31 @@ const filePreviewAttachBtn = document.querySelector<HTMLButtonElement>('#file-pr
 const filePreviewCopyBtn = document.querySelector<HTMLButtonElement>('#file-preview-copy-btn');
 const closeFilePreviewModalButton = document.querySelector<HTMLButtonElement>('#close-file-preview-modal-button');
 const closeFilePreviewButton = document.querySelector<HTMLButtonElement>('#close-file-preview-button');
+
+const topbarSearchBtn = document.querySelector<HTMLButtonElement>('#topbar-search-btn');
+const commandPaletteModal = document.querySelector<HTMLElement>('#command-palette-modal');
+const commandPaletteInput = document.querySelector<HTMLInputElement>('#command-palette-input');
+const commandPaletteResults = document.querySelector<HTMLElement>('#command-palette-results');
+const commandPaletteFilterChips = document.querySelectorAll<HTMLButtonElement>('.palette-filter-chip');
+
+const chatExportBtn = document.querySelector<HTMLButtonElement>('#chat-export-btn');
+const chatExportModal = document.querySelector<HTMLElement>('#chat-export-modal');
+const closeChatExportModalButton = document.querySelector<HTMLButtonElement>('#close-chat-export-modal-button');
+const cancelChatExportButton = document.querySelector<HTMLButtonElement>('#cancel-chat-export-button');
+const copyChatExportButton = document.querySelector<HTMLButtonElement>('#copy-chat-export-button');
+const downloadChatExportButton = document.querySelector<HTMLButtonElement>('#download-chat-export-button');
+const exportSessionTitleBadge = document.querySelector<HTMLElement>('#export-session-title-badge');
+const exportPreviewLabel = document.querySelector<HTMLElement>('#export-preview-label');
+const exportFileNamePreview = document.querySelector<HTMLElement>('#export-file-name-preview');
+const exportPreviewTextarea = document.querySelector<HTMLTextAreaElement>('#export-preview-textarea');
+const exportOptionCards = document.querySelectorAll<HTMLElement>('.export-option-card');
+
+let activePaletteFilter: 'all' | 'actions' | 'sessions' | 'files' | 'memories' = 'all';
+let paletteSelectedIndex = 0;
+let currentPaletteItems: CommandPaletteItem[] = [];
+
+let activeExportFormat: 'markdown' | 'html' | 'json' = 'markdown';
+let activeExportResult: DesktopExportResult | null = null;
 
 let activeSidebarView: 'sessions' | 'explorer' = 'sessions';
 let workspaceFileTree: WorkspaceFileNode[] = [];
@@ -1320,6 +1363,426 @@ async function insertAtMention(file: WorkspaceFileNode) {
   } catch (err) {
     console.error('Failed to attach mentioned file:', err);
   }
+}
+
+function initCommandPalette() {
+  topbarSearchBtn?.addEventListener('click', () => {
+    openCommandPalette();
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+      e.preventDefault();
+      if (commandPaletteModal && !commandPaletteModal.hidden) {
+        closeCommandPalette();
+      } else {
+        openCommandPalette();
+      }
+    } else if (e.key === 'Escape' && commandPaletteModal && !commandPaletteModal.hidden) {
+      closeCommandPalette();
+    }
+  });
+
+  commandPaletteInput?.addEventListener('input', () => {
+    const q = commandPaletteInput.value.trim();
+    renderCommandPaletteResults(q);
+  });
+
+  commandPaletteInput?.addEventListener('keydown', (e) => {
+    if (commandPaletteModal?.hidden) return;
+
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      if (currentPaletteItems.length > 0) {
+        paletteSelectedIndex = (paletteSelectedIndex + 1) % currentPaletteItems.length;
+        updatePaletteSelection();
+      }
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (currentPaletteItems.length > 0) {
+        paletteSelectedIndex = (paletteSelectedIndex - 1 + currentPaletteItems.length) % currentPaletteItems.length;
+        updatePaletteSelection();
+      }
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      const selected = currentPaletteItems[paletteSelectedIndex];
+      if (selected) {
+        closeCommandPalette();
+        void selected.onSelect();
+      }
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      closeCommandPalette();
+    }
+  });
+
+  commandPaletteModal?.querySelector('.command-palette-backdrop')?.addEventListener('click', () => {
+    closeCommandPalette();
+  });
+
+  commandPaletteFilterChips.forEach((chip) => {
+    chip.addEventListener('click', () => {
+      commandPaletteFilterChips.forEach((c) => c.classList.remove('active'));
+      chip.classList.add('active');
+      activePaletteFilter = (chip.dataset.filter || 'all') as any;
+      const q = commandPaletteInput?.value.trim() || '';
+      renderCommandPaletteResults(q);
+    });
+  });
+}
+
+function openCommandPalette() {
+  if (!commandPaletteModal || !commandPaletteInput) return;
+  commandPaletteModal.hidden = false;
+  commandPaletteModal.style.display = 'flex';
+  commandPaletteInput.value = '';
+  paletteSelectedIndex = 0;
+  renderCommandPaletteResults('');
+  setTimeout(() => commandPaletteInput.focus(), 50);
+}
+
+function closeCommandPalette() {
+  if (!commandPaletteModal) return;
+  commandPaletteModal.hidden = true;
+  commandPaletteModal.style.display = 'none';
+}
+
+function buildCommandPaletteIndex(): CommandPaletteItem[] {
+  const items: CommandPaletteItem[] = [];
+
+  // Actions / Navigation
+  items.push(
+    {
+      id: 'act-new-chat',
+      category: 'action',
+      title: 'Mulai Sesi Chat Baru',
+      description: 'Membuka percakapan baru di workspace aktif',
+      icon: '💬',
+      badge: 'Aksi',
+      onSelect: () => startNewChat(),
+    },
+    {
+      id: 'act-new-workspace',
+      category: 'action',
+      title: 'Buat Folder / Workspace Baru',
+      description: 'Isolasi cache dan memori untuk proyek tertentu',
+      icon: '📁',
+      badge: 'Aksi',
+      onSelect: () => openFolderModal(),
+    },
+    {
+      id: 'act-detect-llm',
+      category: 'action',
+      title: 'Deteksi Local LLM (Ollama & LM Studio)',
+      description: 'Pindai model lokal di port 11434 dan 1234',
+      icon: '🔄',
+      badge: 'Aksi',
+      onSelect: async () => {
+        showDesktopPage('chat');
+        await detectAndRenderLocalModels();
+        if (modelSwitcherMenu) modelSwitcherMenu.hidden = false;
+      },
+    },
+    {
+      id: 'act-export-chat',
+      category: 'action',
+      title: 'Ekspor Riwayat Sesi Aktif',
+      description: 'Unduh chat sebagai Markdown, HTML, atau JSON',
+      icon: '📥',
+      badge: 'Aksi',
+      onSelect: () => openChatExportModal(),
+    },
+    {
+      id: 'act-nav-chat',
+      category: 'action',
+      title: 'Buka Chat Console',
+      description: 'Halaman chat AI dengan built-in agent tools',
+      icon: '💬',
+      badge: 'Navigasi',
+      onSelect: () => { showDesktopPage('chat'); forceVisibleDesktopContent(); },
+    },
+    {
+      id: 'act-nav-memory',
+      category: 'action',
+      title: 'Buka Memory System',
+      description: 'Kelola basis data memori jangka panjang',
+      icon: '🧠',
+      badge: 'Navigasi',
+      onSelect: () => { showDesktopPage('memory'); forceVisibleDesktopContent(); },
+    },
+    {
+      id: 'act-nav-skills',
+      category: 'action',
+      title: 'Buka Automation Skills',
+      description: 'Kelola dan eksekusi skill otomasi',
+      icon: '⚡',
+      badge: 'Navigasi',
+      onSelect: () => { showDesktopPage('skill'); forceVisibleDesktopContent(); },
+    },
+    {
+      id: 'act-nav-workflows',
+      category: 'action',
+      title: 'Buka Pipelines & Workflows',
+      description: 'Pipeline multi-step orchestrations',
+      icon: '🔀',
+      badge: 'Navigasi',
+      onSelect: () => { showDesktopPage('workflow'); forceVisibleDesktopContent(); },
+    },
+    {
+      id: 'act-nav-mcp',
+      category: 'action',
+      title: 'Buka MCP Servers',
+      description: 'Hubungkan tool eksternal model context protocol',
+      icon: '🔌',
+      badge: 'Navigasi',
+      onSelect: () => { showDesktopPage('mcp'); forceVisibleDesktopContent(); },
+    },
+    {
+      id: 'act-nav-graphify',
+      category: 'action',
+      title: 'Buka Knowledge Graph (Graphify)',
+      description: 'Visualisasi dependensi file dan fungsi',
+      icon: '📊',
+      badge: 'Navigasi',
+      onSelect: () => { showDesktopPage('graphify'); forceVisibleDesktopContent(); },
+    },
+    {
+      id: 'act-nav-media',
+      category: 'action',
+      title: 'Buka Media Asset Library',
+      description: 'Koleksi media gambar dan audio lokal',
+      icon: '🖼️',
+      badge: 'Navigasi',
+      onSelect: () => { showDesktopPage('media'); forceVisibleDesktopContent(); },
+    },
+    {
+      id: 'act-nav-settings',
+      category: 'action',
+      title: 'Buka Engine Settings',
+      description: 'Konfigurasi provider, endpoint, dan model',
+      icon: '⚙️',
+      badge: 'Navigasi',
+      onSelect: () => { showDesktopPage('settings'); forceVisibleDesktopContent(); },
+    }
+  );
+
+  // Chat Sessions
+  chatSessions.forEach((session) => {
+    const lastMsg = session.messages[session.messages.length - 1];
+    const preview = lastMsg ? lastMsg.content.slice(0, 70) : 'Sesi kosong';
+    items.push({
+      id: `session-${session.id}`,
+      category: 'session',
+      title: session.title || 'Sesi Tanpa Judul',
+      description: `${session.workspace ? `[${session.workspace}] ` : ''}${preview}`,
+      icon: '💬',
+      badge: 'Sesi',
+      onSelect: () => openChatSession(session.id),
+    });
+  });
+
+  // Workspace Files
+  const flatFiles = flattenWorkspaceFiles(workspaceFileTree);
+  flatFiles.forEach((file) => {
+    items.push({
+      id: `file-${file.path}`,
+      category: 'file',
+      title: file.name,
+      description: file.rel_path,
+      icon: getFileIcon(file),
+      badge: 'File',
+      onSelect: () => void openFilePreviewModal(file),
+    });
+  });
+
+  // Memories
+  memories.forEach((mem) => {
+    items.push({
+      id: `mem-${mem.id}`,
+      category: 'memory',
+      title: mem.content.slice(0, 50),
+      description: mem.tags.length ? `Tags: ${mem.tags.join(', ')}` : 'Memori tersimpan',
+      icon: '🧠',
+      badge: 'Memori',
+      onSelect: () => {
+        showDesktopPage('memory');
+        if (memorySearchInput) {
+          memorySearchInput.value = mem.content.slice(0, 20);
+          scheduleMemorySearch(memorySearchInput.value);
+        }
+      },
+    });
+  });
+
+  return items;
+}
+
+function renderCommandPaletteResults(query: string) {
+  if (!commandPaletteResults) return;
+
+  const allItems = buildCommandPaletteIndex();
+  const lowerQuery = query.toLowerCase();
+
+  const filtered = allItems.filter((item) => {
+    if (activePaletteFilter !== 'all') {
+      if (activePaletteFilter === 'actions' && item.category !== 'action') return false;
+      if (activePaletteFilter === 'sessions' && item.category !== 'session') return false;
+      if (activePaletteFilter === 'files' && item.category !== 'file') return false;
+      if (activePaletteFilter === 'memories' && item.category !== 'memory') return false;
+    }
+    if (!query) return true;
+    return (
+      item.title.toLowerCase().includes(lowerQuery) ||
+      item.description.toLowerCase().includes(lowerQuery)
+    );
+  });
+
+  currentPaletteItems = filtered;
+  paletteSelectedIndex = 0;
+  commandPaletteResults.innerHTML = '';
+
+  if (!filtered.length) {
+    commandPaletteResults.innerHTML = `
+      <div style="padding: 24px; text-align: center; color: #64748B; font-size: 13px;">
+        Tidak ada hasil yang cocok dengan "<strong>${htmlEscape(query)}</strong>"
+      </div>
+    `;
+    return;
+  }
+
+  filtered.forEach((item, index) => {
+    const el = document.createElement('div');
+    el.className = `palette-result-item ${index === 0 ? 'selected' : ''}`;
+    el.innerHTML = `
+      <div class="palette-result-left">
+        <span class="palette-result-icon">${item.icon}</span>
+        <div class="palette-result-text">
+          <span class="palette-result-title">${htmlEscape(item.title)}</span>
+          <span class="palette-result-desc">${htmlEscape(item.description)}</span>
+        </div>
+      </div>
+      <span class="palette-result-badge badge-${item.category}">${item.badge}</span>
+    `;
+
+    el.addEventListener('click', () => {
+      closeCommandPalette();
+      void item.onSelect();
+    });
+
+    commandPaletteResults.appendChild(el);
+  });
+}
+
+function updatePaletteSelection() {
+  const items = commandPaletteResults?.querySelectorAll<HTMLElement>('.palette-result-item');
+  items?.forEach((item, idx) => {
+    item.classList.toggle('selected', idx === paletteSelectedIndex);
+    if (idx === paletteSelectedIndex) {
+      item.scrollIntoView({ block: 'nearest' });
+    }
+  });
+}
+
+function initChatExportModal() {
+  chatExportBtn?.addEventListener('click', () => {
+    openChatExportModal();
+  });
+
+  closeChatExportModalButton?.addEventListener('click', closeChatExportModal);
+  cancelChatExportButton?.addEventListener('click', closeChatExportModal);
+
+  exportOptionCards.forEach((card) => {
+    card.addEventListener('click', () => {
+      exportOptionCards.forEach((c) => c.classList.remove('active'));
+      card.classList.add('active');
+      activeExportFormat = (card.dataset.format || 'markdown') as any;
+      void loadChatExportPreview();
+    });
+  });
+
+  copyChatExportButton?.addEventListener('click', () => {
+    if (exportPreviewTextarea && activeExportResult) {
+      navigator.clipboard.writeText(exportPreviewTextarea.value);
+      copyChatExportButton.textContent = '✓ Disalin!';
+      setTimeout(() => {
+        if (copyChatExportButton) copyChatExportButton.textContent = '📋 Salin Isi';
+      }, 1500);
+    }
+  });
+
+  downloadChatExportButton?.addEventListener('click', async () => {
+    if (!activeExportResult) return;
+    try {
+      const blob = new Blob([activeExportResult.content], {
+        type: activeExportFormat === 'json' ? 'application/json' : (activeExportFormat === 'html' ? 'text/html' : 'text/markdown'),
+      });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = activeExportResult.file_name;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      downloadChatExportButton.textContent = '✓ Diunduh!';
+      setTimeout(() => {
+        if (downloadChatExportButton) downloadChatExportButton.textContent = '💾 Download File';
+      }, 1500);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : String(err));
+    }
+  });
+}
+
+async function openChatExportModal() {
+  if (!chatExportModal) return;
+  const session = chatSessions.find((s) => s.id === activeChatSessionId);
+  if (!session) {
+    alert('Buka sesi chat terlebih dahulu sebelum mengekspor.');
+    return;
+  }
+
+  if (exportSessionTitleBadge) {
+    exportSessionTitleBadge.textContent = session.title || 'Sesi';
+  }
+
+  chatExportModal.hidden = false;
+  chatExportModal.style.display = 'flex';
+  await loadChatExportPreview();
+}
+
+function closeChatExportModal() {
+  if (chatExportModal) {
+    chatExportModal.hidden = true;
+    chatExportModal.style.display = 'none';
+  }
+}
+
+async function loadChatExportPreview() {
+  if (!exportPreviewTextarea || !exportFileNamePreview || !exportPreviewLabel) return;
+  exportPreviewTextarea.value = 'Membuat format ekspor...';
+
+  try {
+    const res = await invokeCommand<DesktopExportResult>('export_desktop_chat_session', {
+      sessionId: activeChatSessionId,
+      format: activeExportFormat,
+    });
+    activeExportResult = res;
+    exportPreviewTextarea.value = res.content;
+    exportFileNamePreview.textContent = res.file_name;
+    exportPreviewLabel.textContent = `Preview ${res.format.toUpperCase()}:`;
+  } catch (error) {
+    exportPreviewTextarea.value = `Gagal memuat ekspor: ${error instanceof Error ? error.message : String(error)}`;
+  }
+}
+
+function htmlEscape(str: string): string {
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
 async function createWorkspace(name: string, path?: string) {
@@ -3889,6 +4352,8 @@ async function startDesktop() {
     initFilePreviewModal();
     initQuickModelSwitcher();
     initAtMentionAutocomplete();
+    initCommandPalette();
+    initChatExportModal();
     await Promise.all([
       loadWorkspaces(),
       loadChatSessions(),

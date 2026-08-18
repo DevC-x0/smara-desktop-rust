@@ -506,6 +506,30 @@ async function installMockTauri(
           };
           return window.__SMARA_PROVIDER_CONFIG__;
         }
+        if (command === 'export_desktop_chat_session') {
+          const session = (window.__SMARA_CHAT_SESSIONS__ || []).find((s) => s.id === args.sessionId) || {
+            id: args.sessionId,
+            title: 'Mock Session',
+            messages: [{ role: 'user', content: 'Mock user message' }],
+          };
+          const fmt = args.format || 'markdown';
+          let content = `# ${session.title}\n\nUser: Mock user message`;
+          if (fmt === 'json') {
+            content = JSON.stringify(session, null, 2);
+          } else if (fmt === 'html') {
+            content = `<!DOCTYPE html><html><body><h1>${session.title}</h1></body></html>`;
+          }
+          return {
+            session_id: session.id,
+            title: session.title,
+            format: fmt,
+            content,
+            file_name: `mock_export.${fmt === 'markdown' ? 'md' : fmt}`,
+          };
+        }
+        if (command === 'save_exported_chat') {
+          return true;
+        }
         throw new Error(`Unexpected standalone Desktop command: ${command}`);
       },
     };
@@ -1109,6 +1133,81 @@ test('applies code from assistant code block and provides prompt edit button', a
   // Click edit button
   await editBtn.click();
   await expect(page.locator('#chat-input')).toHaveValue('buat file config');
+});
+
+test('opens command palette with Ctrl+K, filters items, and executes action', async ({ page }) => {
+  await installMockTauri(page);
+  await page.goto('/');
+
+  // Trigger command palette via topbar search button
+  await page.locator('#topbar-search-btn').click();
+  const modal = page.locator('#command-palette-modal');
+  await expect(modal).toBeVisible();
+
+  const paletteInput = page.locator('#command-palette-input');
+  await expect(paletteInput).toBeFocused();
+
+  // Search for Knowledge Graph action
+  await paletteInput.fill('Graphify');
+  const graphifyResult = page.locator('.palette-result-item', { hasText: 'Knowledge Graph' });
+  await expect(graphifyResult).toBeVisible();
+
+  // Press Enter to navigate to Graphify
+  await paletteInput.press('Enter');
+  await expect(modal).toBeHidden();
+  await expect(page.locator('[data-page="graphify"]')).toBeVisible();
+
+  // Open with keyboard shortcut Ctrl+K
+  await page.keyboard.press('Control+KeyK');
+  await expect(modal).toBeVisible();
+
+  // Filter by "Files" chip
+  await page.locator('.palette-filter-chip[data-filter="files"]').click();
+  const fileResult = page.locator('.palette-result-item', { hasText: 'main.rs' });
+  await expect(fileResult).toBeVisible();
+
+  // Press Escape to close
+  await page.keyboard.press('Escape');
+  await expect(modal).toBeHidden();
+});
+
+test('exports active chat session to markdown, html, and json formats', async ({ page }) => {
+  await installMockTauri(page);
+  await page.goto('/');
+
+  await openDesktopPage(page, 'chat');
+
+  // Send a message first
+  await page.locator('#chat-input').fill('analisis performa database');
+  await page.locator('#send-chat-button').click();
+  await expect(page.locator('.chat-message-assistant')).toBeVisible();
+
+  // Click Ekspor button in chat header
+  await page.locator('#chat-export-btn').click();
+  const exportModal = page.locator('#chat-export-modal');
+  await expect(exportModal).toBeVisible();
+
+  // Verify Markdown preview is loaded by default
+  const previewTextarea = page.locator('#export-preview-textarea');
+  await expect(previewTextarea).toHaveValue(/analisis performa database/);
+
+  // Switch to HTML format card
+  await page.locator('.export-option-card[data-format="html"]').click();
+  await expect(page.locator('#export-file-name-preview')).toContainText('.html');
+  await expect(previewTextarea).toHaveValue(/<!DOCTYPE html>/);
+
+  // Switch to JSON format card
+  await page.locator('.export-option-card[data-format="json"]').click();
+  await expect(page.locator('#export-file-name-preview')).toContainText('.json');
+  await expect(previewTextarea).toHaveValue(/messages/);
+
+  // Click Copy button
+  await page.locator('#copy-chat-export-button').click();
+  await expect(page.locator('#copy-chat-export-button')).toContainText('Disalin');
+
+  // Close export modal
+  await page.locator('#close-chat-export-modal-button').click();
+  await expect(exportModal).toBeHidden();
 });
 
 
