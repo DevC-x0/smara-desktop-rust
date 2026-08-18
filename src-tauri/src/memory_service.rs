@@ -13,7 +13,10 @@ const MAX_CONTENT_CHARS: usize = 20_000;
 pub struct DesktopMemory {
     pub id: String,
     pub content: String,
+    #[serde(default)]
     pub tags: Vec<String>,
+    #[serde(default)]
+    pub workspace: Option<String>,
     pub created_at_ms: u128,
     pub updated_at_ms: u128,
 }
@@ -31,6 +34,8 @@ pub struct CreateMemoryRequest {
     pub content: String,
     #[serde(default)]
     pub tags: Vec<String>,
+    #[serde(default)]
+    pub workspace: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -39,6 +44,8 @@ pub struct UpdateMemoryRequest {
     pub content: String,
     #[serde(default)]
     pub tags: Vec<String>,
+    #[serde(default)]
+    pub workspace: Option<String>,
 }
 
 fn normalize_tags(tags: Vec<String>) -> Vec<String> {
@@ -51,6 +58,17 @@ fn normalize_tags(tags: Vec<String>) -> Vec<String> {
     tags.dedup();
     tags.truncate(20);
     tags
+}
+
+fn normalize_workspace(workspace: Option<String>) -> Option<String> {
+    workspace.and_then(|w| {
+        let trimmed = w.trim().to_string();
+        if trimmed.is_empty() {
+            None
+        } else {
+            Some(trimmed)
+        }
+    })
 }
 
 fn validate_content(content: &str) -> Result<String, String> {
@@ -103,6 +121,7 @@ fn create_memory_at(path: &Path, request: CreateMemoryRequest) -> Result<Desktop
         id: format!("memory-{timestamp}-{}", memories.len() + 1),
         content: validate_content(&request.content)?,
         tags: normalize_tags(request.tags),
+        workspace: normalize_workspace(request.workspace),
         created_at_ms: timestamp,
         updated_at_ms: timestamp,
     };
@@ -116,6 +135,7 @@ fn upsert_tagged_memory_at(
     content: &str,
     tags: Vec<String>,
     identity_tag: &str,
+    workspace: Option<String>,
 ) -> Result<DesktopMemory, String> {
     let mut memories = load_memories_from(path)?;
     let normalized_tags = normalize_tags(tags);
@@ -127,6 +147,9 @@ fn upsert_tagged_memory_at(
         let mut memory = memories.remove(index);
         memory.content = validate_content(content)?;
         memory.tags = normalized_tags;
+        if workspace.is_some() {
+            memory.workspace = normalize_workspace(workspace);
+        }
         memory.updated_at_ms = timestamp;
         memories.insert(0, memory.clone());
         save_memories_to(path, &memories)?;
@@ -141,6 +164,7 @@ fn upsert_tagged_memory_at(
         id: format!("memory-{timestamp}-{}", memories.len() + 1),
         content: validate_content(content)?,
         tags: normalized_tags,
+        workspace: normalize_workspace(workspace),
         created_at_ms: timestamp,
         updated_at_ms: timestamp,
     };
@@ -160,7 +184,7 @@ pub(crate) fn upsert_desktop_self_improvement(
         "auto-apply".to_string(),
         identity_tag.to_string(),
     ]);
-    upsert_tagged_memory_at(&memory_path(app)?, content, tags, identity_tag)
+    upsert_tagged_memory_at(&memory_path(app)?, content, tags, identity_tag, None)
 }
 
 fn update_memory_at(path: &Path, request: UpdateMemoryRequest) -> Result<DesktopMemory, String> {
@@ -172,6 +196,9 @@ fn update_memory_at(path: &Path, request: UpdateMemoryRequest) -> Result<Desktop
     let mut memory = memories.remove(index);
     memory.content = validate_content(&request.content)?;
     memory.tags = normalize_tags(request.tags);
+    if request.workspace.is_some() {
+        memory.workspace = normalize_workspace(request.workspace);
+    }
     memory.updated_at_ms = now_ms();
     memories.insert(0, memory.clone());
     save_memories_to(path, &memories)?;
@@ -277,11 +304,22 @@ fn cosine_similarity(left: &HashMap<String, f64>, right: &HashMap<String, f64>) 
 fn rank_memories(
     memories: Vec<DesktopMemory>,
     query: &str,
+    target_workspace: Option<&str>,
     limit: usize,
 ) -> Vec<DesktopMemorySearchResult> {
     let normalized_query = query.trim().to_ascii_lowercase();
     if normalized_query.is_empty() {
-        return memories
+        let mut sorted = memories;
+        if let Some(tw) = target_workspace {
+            sorted.sort_by_key(|m| {
+                if m.workspace.as_deref().map(|w| w.eq_ignore_ascii_case(tw)).unwrap_or(false) {
+                    0
+                } else {
+                    1
+                }
+            });
+        }
+        return sorted
             .into_iter()
             .take(limit)
             .map(|memory| DesktopMemorySearchResult {
@@ -319,7 +357,11 @@ fn rank_memories(
                 matched_terms.len() as f64 / unique_query_terms.len() as f64
             };
             let exact_boost = if exact_phrase { 0.1 } else { 0.0 };
-            let score = (semantic_score * 0.68 + coverage * 0.22 + exact_boost).min(1.0);
+            let workspace_boost = match (target_workspace, &memory.workspace) {
+                (Some(tw), Some(mw)) if tw.eq_ignore_ascii_case(mw) => 0.18,
+                _ => 0.0,
+            };
+            let score = (semantic_score * 0.65 + coverage * 0.20 + exact_boost + workspace_boost).min(1.0);
             (score >= 0.08).then_some(DesktopMemorySearchResult {
                 memory,
                 score,
@@ -347,14 +389,15 @@ fn rank_memories(
 fn search_memories_ranked_at(
     path: &Path,
     query: &str,
+    target_workspace: Option<&str>,
     limit: usize,
 ) -> Result<Vec<DesktopMemorySearchResult>, String> {
     let memories = load_memories_from(path)?;
-    Ok(rank_memories(memories, query, limit))
+    Ok(rank_memories(memories, query, target_workspace, limit))
 }
 
 fn search_memories_at(path: &Path, query: &str) -> Result<Vec<DesktopMemory>, String> {
-    Ok(search_memories_ranked_at(path, query, 100)?
+    Ok(search_memories_ranked_at(path, query, None, 100)?
         .into_iter()
         .map(|result| result.memory)
         .collect())
@@ -363,15 +406,25 @@ fn search_memories_at(path: &Path, query: &str) -> Result<Vec<DesktopMemory>, St
 fn relevant_memories_at(
     path: &Path,
     query: &str,
+    target_workspace: Option<&str>,
     limit: usize,
 ) -> Result<Vec<DesktopMemory>, String> {
     if query.trim().is_empty() || limit == 0 {
         return Ok(Vec::new());
     }
-    Ok(search_memories_ranked_at(path, query, limit)?
+    Ok(search_memories_ranked_at(path, query, target_workspace, limit)?
         .into_iter()
         .map(|result| result.memory)
         .collect())
+}
+
+pub(crate) fn relevant_memories_scoped(
+    app: &AppHandle,
+    query: &str,
+    workspace: Option<&str>,
+    limit: usize,
+) -> Result<Vec<DesktopMemory>, String> {
+    relevant_memories_at(&memory_path(app)?, query, workspace, limit)
 }
 
 pub(crate) fn relevant_memories(
@@ -379,7 +432,7 @@ pub(crate) fn relevant_memories(
     query: &str,
     limit: usize,
 ) -> Result<Vec<DesktopMemory>, String> {
-    relevant_memories_at(&memory_path(app)?, query, limit)
+    relevant_memories_scoped(app, query, None, limit)
 }
 
 fn delete_memory_at(path: &Path, id: &str) -> Result<bool, String> {
@@ -427,7 +480,7 @@ pub fn search_desktop_memories_ranked(
     app: AppHandle,
     query: String,
 ) -> Result<Vec<DesktopMemorySearchResult>, String> {
-    search_memories_ranked_at(&memory_path(&app)?, &query, 100)
+    search_memories_ranked_at(&memory_path(&app)?, &query, None, 100)
 }
 
 #[tauri::command]
@@ -463,13 +516,14 @@ mod tests {
                     "rust".to_string(),
                     "project".to_string(),
                 ],
+                workspace: None,
             },
         )
         .unwrap();
         let results = search_memories_at(&path, "rust").unwrap();
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].tags, vec!["project", "rust"]);
-        let relevant = relevant_memories_at(&path, "What does Project Alpha use?", 5).unwrap();
+        let relevant = relevant_memories_at(&path, "What does Project Alpha use?", None, 5).unwrap();
         assert_eq!(relevant.len(), 1);
         assert_eq!(relevant[0].id, memory.id);
         let updated = update_memory_at(
@@ -478,10 +532,12 @@ mod tests {
                 id: memory.id.clone(),
                 content: "Project Alpha database uses updated native memory".to_string(),
                 tags: vec!["updated".to_string()],
+                workspace: Some("alpha-ws".to_string()),
             },
         )
         .unwrap();
         assert_eq!(updated.id, memory.id);
+        assert_eq!(updated.workspace.as_deref(), Some("alpha-ws"));
         assert_eq!(updated.created_at_ms, memory.created_at_ms);
         assert!(updated.updated_at_ms >= memory.updated_at_ms);
         assert_eq!(search_memories_at(&path, "updated").unwrap().len(), 1);
@@ -490,13 +546,14 @@ mod tests {
             CreateMemoryRequest {
                 content: "Cooking notes for weekend dinner".to_string(),
                 tags: vec!["food".to_string()],
+                workspace: None,
             },
         )
         .unwrap();
-        let semantic = search_memories_ranked_at(&path, "where is project data stored", 5).unwrap();
+        let semantic = search_memories_ranked_at(&path, "where is project data stored", Some("alpha-ws"), 5).unwrap();
         assert_eq!(semantic[0].memory.id, memory.id);
         assert!(semantic[0].score > 0.08);
-        let fuzzy = search_memories_ranked_at(&path, "projec alpha", 5).unwrap();
+        let fuzzy = search_memories_ranked_at(&path, "projec alpha", None, 5).unwrap();
         assert_eq!(fuzzy[0].memory.id, memory.id);
         assert!(fuzzy[0].match_kind == "semantic" || fuzzy[0].match_kind == "fuzzy");
         assert!(delete_memory_at(&path, &memory.id).unwrap());

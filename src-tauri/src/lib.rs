@@ -22,7 +22,8 @@ use app_state::{
 use builtin_tools::{list_desktop_builtin_tools, run_desktop_builtin_tool};
 use chat_service::{
     cancel_desktop_chat_stream, delete_desktop_chat_session, list_desktop_chat_sessions,
-    send_desktop_chat, stream_desktop_chat, DesktopChatStreamState,
+    move_desktop_chat_session_workspace, send_desktop_chat, stream_desktop_chat,
+    DesktopChatStreamState,
 };
 use graphify_service::{build_desktop_graphify, get_desktop_graphify, search_desktop_graphify};
 use mcp_service::{
@@ -48,7 +49,8 @@ use workflow_service::{
     run_desktop_workflow, save_desktop_workflow,
 };
 use workspace_service::{
-    create_desktop_workspace, get_desktop_workspaces, switch_desktop_workspace,
+    create_desktop_workspace, delete_desktop_workspace, get_desktop_workspaces,
+    switch_desktop_workspace,
 };
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -68,6 +70,7 @@ pub fn run() {
             stream_desktop_chat,
             cancel_desktop_chat_stream,
             delete_desktop_chat_session,
+            move_desktop_chat_session_workspace,
             build_desktop_graphify,
             get_desktop_graphify,
             search_desktop_graphify,
@@ -99,6 +102,7 @@ pub fn run() {
             get_desktop_workspaces,
             create_desktop_workspace,
             switch_desktop_workspace,
+            delete_desktop_workspace,
             get_desktop_provider_config,
             save_desktop_provider_config,
             check_desktop_provider_health,

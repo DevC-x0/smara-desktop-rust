@@ -109,6 +109,22 @@ fn switch_workspace(state: &mut DesktopWorkspaceState, name: &str) -> Result<(),
     Ok(())
 }
 
+fn delete_workspace(state: &mut DesktopWorkspaceState, name: &str) -> Result<(), String> {
+    let name = normalize_name(name)?;
+    if name.eq_ignore_ascii_case(DEFAULT_WORKSPACE) {
+        return Err("Cannot delete the default workspace.".to_string());
+    }
+    let initial_len = state.workspaces.len();
+    state.workspaces.retain(|w| !w.name.eq_ignore_ascii_case(&name));
+    if state.workspaces.len() == initial_len {
+        return Err(format!("Workspace '{name}' was not found."));
+    }
+    if state.active.eq_ignore_ascii_case(&name) {
+        state.active = DEFAULT_WORKSPACE.to_string();
+    }
+    Ok(())
+}
+
 fn workspaces_path(app: &AppHandle) -> Result<PathBuf, String> {
     let dir = app
         .path()
@@ -167,9 +183,19 @@ pub fn switch_desktop_workspace(
     save_workspace_state(&app, &state)
 }
 
+#[tauri::command]
+pub fn delete_desktop_workspace(
+    app: AppHandle,
+    name: String,
+) -> Result<DesktopWorkspaceState, String> {
+    let mut state = load_workspace_state(&app)?;
+    delete_workspace(&mut state, &name)?;
+    save_workspace_state(&app, &state)
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{create_workspace, switch_workspace, DesktopWorkspaceState};
+    use super::{create_workspace, delete_workspace, switch_workspace, DesktopWorkspaceState};
 
     #[test]
     fn default_state_is_immediately_usable() {
@@ -201,5 +227,19 @@ mod tests {
         assert!(create_workspace(&mut state, "DEFAULT", None).is_err());
         assert!(create_workspace(&mut state, "../unsafe", None).is_err());
         assert!(switch_workspace(&mut state, "missing").is_err());
+    }
+
+    #[test]
+    fn delete_custom_workspace_and_reset_active_if_deleted() {
+        let mut state = DesktopWorkspaceState::default();
+        create_workspace(&mut state, "TempFolder", None).unwrap();
+        switch_workspace(&mut state, "TempFolder").unwrap();
+        assert_eq!(state.active, "TempFolder");
+
+        delete_workspace(&mut state, "TempFolder").unwrap();
+        assert_eq!(state.active, "default");
+        assert_eq!(state.workspaces.len(), 1);
+
+        assert!(delete_workspace(&mut state, "default").is_err());
     }
 }

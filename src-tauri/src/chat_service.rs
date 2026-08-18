@@ -4,7 +4,7 @@ use crate::builtin_tools::{
     DesktopBuiltinToolRequest, DesktopToolApproval,
 };
 use crate::improvement_service::learn_from_desktop_chat;
-use crate::memory_service::{relevant_memories, DesktopMemory};
+use crate::memory_service::{relevant_memories_scoped, DesktopMemory};
 use crate::provider_service::{load_provider_config, DesktopProviderConfig};
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use reqwest::blocking::Client;
@@ -63,6 +63,8 @@ pub struct DesktopChatMessage {
 pub struct DesktopChatSession {
     pub id: String,
     pub title: String,
+    #[serde(default)]
+    pub workspace: Option<String>,
     pub created_at_ms: u128,
     pub updated_at_ms: u128,
     pub messages: Vec<DesktopChatMessage>,
@@ -75,6 +77,8 @@ pub struct SendChatRequest {
     pub session_id: Option<String>,
     pub message: String,
     pub request_id: Option<String>,
+    #[serde(default)]
+    pub workspace: Option<String>,
     #[serde(default)]
     pub attachments: Vec<DesktopChatAttachment>,
 }
@@ -809,11 +813,15 @@ fn send_chat_with(
             } else {
                 message.chars().take(60).collect()
             },
+            workspace: request.workspace.clone(),
             created_at_ms: timestamp,
             updated_at_ms: timestamp,
             messages: Vec::new(),
             memory_context_count: 0,
         });
+    if session.workspace.is_none() && request.workspace.is_some() {
+        session.workspace = request.workspace;
+    }
     session.messages.push(DesktopChatMessage {
         id: format!("message-{timestamp}-user"),
         role: "user".to_string(),
@@ -869,11 +877,38 @@ pub fn delete_desktop_chat_session(app: AppHandle, id: String) -> Result<bool, S
 }
 
 #[tauri::command]
+pub fn move_desktop_chat_session_workspace(
+    app: AppHandle,
+    session_id: String,
+    target_workspace: Option<String>,
+) -> Result<DesktopChatSession, String> {
+    let path = chat_path(&app)?;
+    let mut sessions = load_sessions_from(&path)?;
+    let index = sessions
+        .iter()
+        .position(|s| s.id == session_id)
+        .ok_or_else(|| format!("Chat session '{session_id}' not found."))?;
+    let mut session = sessions.remove(index);
+    session.workspace = target_workspace.and_then(|w| {
+        let trimmed = w.trim().to_string();
+        if trimmed.is_empty() {
+            None
+        } else {
+            Some(trimmed)
+        }
+    });
+    session.updated_at_ms = now_ms();
+    sessions.insert(0, session.clone());
+    save_sessions_to(&path, &sessions)?;
+    Ok(session)
+}
+
+#[tauri::command]
 pub async fn send_desktop_chat(
     app: AppHandle,
     request: SendChatRequest,
 ) -> Result<DesktopChatSession, String> {
-    let memories = relevant_memories(&app, &request.message, 5)?;
+    let memories = relevant_memories_scoped(&app, &request.message, request.workspace.as_deref(), 5)?;
     let path = chat_path(&app)?;
     let config = load_provider_config(&app)?;
     let learning_app = app.clone();
@@ -913,7 +948,7 @@ pub async fn stream_desktop_chat(
             format!("Workspace Scanner: {first_line}"),
         );
     }
-    let memories = relevant_memories(&app, &request.message, 5)?;
+    let memories = relevant_memories_scoped(&app, &request.message, request.workspace.as_deref(), 5)?;
     if !memories.is_empty() {
         emit_chat_stream_event(
             &app,
@@ -1254,12 +1289,14 @@ mod tests {
                 session_id: None,
                 message: "hello desktop".to_string(),
                 request_id: None,
+                workspace: Some("test-ws".to_string()),
                 attachments: Vec::new(),
             },
             vec![DesktopMemory {
                 id: "memory-test".to_string(),
                 content: "Desktop context marker".to_string(),
                 tags: vec!["desktop".to_string()],
+                workspace: Some("test-ws".to_string()),
                 created_at_ms: now_ms(),
                 updated_at_ms: now_ms(),
             }],
@@ -1267,6 +1304,7 @@ mod tests {
         .unwrap();
         assert_eq!(session.messages.len(), 2);
         assert_eq!(session.messages[1].content, "native reply");
+        assert_eq!(session.workspace.as_deref(), Some("test-ws"));
         assert_eq!(session.memory_context_count, 1);
         assert!(path.exists());
         server.join().unwrap();

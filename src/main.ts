@@ -100,9 +100,21 @@ type DesktopChatAttachment = {
   bytes: number;
 };
 
+type DesktopWorkspace = {
+  name: string;
+  path?: string | null;
+  created_at_ms: number;
+};
+
+type DesktopWorkspaceState = {
+  active: string;
+  workspaces: DesktopWorkspace[];
+};
+
 type DesktopChatSession = {
   id: string;
   title: string;
+  workspace?: string;
   created_at_ms: number;
   updated_at_ms: number;
   messages: DesktopChatMessage[];
@@ -125,6 +137,7 @@ type DesktopMemory = {
   id: string;
   content: string;
   tags: string[];
+  workspace?: string;
   created_at_ms: number;
   updated_at_ms: number;
 };
@@ -406,6 +419,28 @@ const mediaCount = document.querySelector<HTMLElement>('#media-count');
 const mediaStatus = document.querySelector<HTMLElement>('#media-status');
 const pageNavLinks = Array.from(document.querySelectorAll<HTMLAnchorElement>('a[data-page-target], .sidebar-menu a[data-page-target], .sidebar-nav a[data-page-target]'));
 const pageSections = Array.from(document.querySelectorAll<HTMLElement>('[data-page]'));
+
+const sidebarNewFolderButton = document.querySelector<HTMLButtonElement>('#sidebar-new-folder-button');
+const folderModal = document.querySelector<HTMLElement>('#folder-modal');
+const folderNameInput = document.querySelector<HTMLInputElement>('#folder-name-input');
+const folderRandomBtn = document.querySelector<HTMLButtonElement>('#folder-random-btn');
+const cancelFolderButton = document.querySelector<HTMLButtonElement>('#cancel-folder-button');
+const confirmCreateFolderButton = document.querySelector<HTMLButtonElement>('#confirm-create-folder-button');
+const closeFolderModalButton = document.querySelector<HTMLButtonElement>('#close-folder-modal-button');
+const moveSessionModal = document.querySelector<HTMLElement>('#move-session-modal');
+const moveSessionTitleLabel = document.querySelector<HTMLElement>('#move-session-title-label');
+const moveFolderSelect = document.querySelector<HTMLSelectElement>('#move-folder-select');
+const cancelMoveSessionButton = document.querySelector<HTMLButtonElement>('#cancel-move-session-button');
+const confirmMoveSessionButton = document.querySelector<HTMLButtonElement>('#confirm-move-session-button');
+const closeMoveModalButton = document.querySelector<HTMLButtonElement>('#close-move-modal-button');
+const activeWorkspaceBadge = document.querySelector<HTMLElement>('#active-workspace-badge');
+const activeWorkspaceNameEl = document.querySelector<HTMLElement>('#active-workspace-name');
+const activeWorkspaceMemoryPill = document.querySelector<HTMLElement>('#active-workspace-memory-pill');
+
+let workspacesList: DesktopWorkspace[] = [];
+let activeWorkspaceName = 'default';
+const collapsedWorkspaces = new Set<string>();
+let pendingMoveSessionId: string | null = null;
 
 let chatSessions: DesktopChatSession[] = [];
 let activeChatSessionId = '';
@@ -707,6 +742,124 @@ async function deleteSessionById(sessionId: string) {
   }
 }
 
+function generateRandomWorkspaceName(): string {
+  const prefixes = ['Nova', 'Apex', 'Cyber', 'Nexus', 'Starlight', 'Quantum', 'Hyper', 'Orion', 'Pulse', 'Zenith', 'Echo', 'Vortex', 'Stitch', 'Aura', 'Solar', 'Titan'];
+  const nouns = ['Workspace', 'Project', 'Studio', 'Lab', 'Engine', 'Backend', 'Flow', 'Core', 'Hub'];
+  const p = prefixes[Math.floor(Math.random() * prefixes.length)];
+  const n = nouns[Math.floor(Math.random() * nouns.length)];
+  const num = Math.floor(Math.random() * 90 + 10);
+  return `${p}-${n}-${num}`;
+}
+
+function updateChatHeaderWorkspaceInfo() {
+  if (activeWorkspaceNameEl) {
+    activeWorkspaceNameEl.textContent = activeWorkspaceName === 'default' ? 'General' : activeWorkspaceName;
+  }
+  if (activeWorkspaceMemoryPill) {
+    const wsMemories = memories.filter((m) => !m.workspace || m.workspace === activeWorkspaceName);
+    activeWorkspaceMemoryPill.textContent = `${wsMemories.length} memori`;
+  }
+  if (activeWorkspaceBadge) {
+    activeWorkspaceBadge.title = `Folder Workspace: ${activeWorkspaceName} (Shared Cache & Memory)`;
+  }
+}
+
+async function loadWorkspaces() {
+  try {
+    const state = await invokeCommand<DesktopWorkspaceState>('get_desktop_workspaces');
+    workspacesList = state.workspaces;
+    if (!activeWorkspaceName || activeWorkspaceName === 'default') {
+      activeWorkspaceName = state.active || 'default';
+    }
+    updateChatHeaderWorkspaceInfo();
+    renderSidebarChatSessions();
+  } catch (error) {
+    console.error('Failed to load workspaces:', error);
+  }
+}
+
+async function createWorkspace(name: string, path?: string) {
+  try {
+    const state = await invokeCommand<DesktopWorkspaceState>('create_desktop_workspace', {
+      name,
+      path: path ?? null,
+    });
+    workspacesList = state.workspaces;
+    activeWorkspaceName = name;
+    updateChatHeaderWorkspaceInfo();
+    startNewChatInWorkspace(name);
+  } catch (error) {
+    alert(error instanceof Error ? error.message : String(error));
+  }
+}
+
+async function deleteWorkspace(name: string) {
+  try {
+    const state = await invokeCommand<DesktopWorkspaceState>('delete_desktop_workspace', { name });
+    workspacesList = state.workspaces;
+    if (activeWorkspaceName === name) {
+      activeWorkspaceName = state.active || 'default';
+    }
+    updateChatHeaderWorkspaceInfo();
+    await loadChatSessions();
+  } catch (error) {
+    alert(error instanceof Error ? error.message : String(error));
+  }
+}
+
+async function moveSessionToWorkspace(sessionId: string, targetWorkspace: string) {
+  try {
+    await invokeCommand<DesktopChatSession>('move_desktop_chat_session_workspace', {
+      sessionId,
+      targetWorkspace: targetWorkspace === 'default' ? null : targetWorkspace,
+    });
+    await loadChatSessions();
+  } catch (error) {
+    alert(error instanceof Error ? error.message : String(error));
+  }
+}
+
+function openFolderModal() {
+  if (!folderModal) return;
+  folderModal.hidden = false;
+  if (folderNameInput) {
+    folderNameInput.value = '';
+    folderNameInput.focus();
+  }
+}
+
+function closeFolderModal() {
+  if (folderModal) folderModal.hidden = true;
+}
+
+function openMoveSessionModal(session: DesktopChatSession) {
+  if (!moveSessionModal) return;
+  pendingMoveSessionId = session.id;
+  if (moveSessionTitleLabel) {
+    moveSessionTitleLabel.textContent = `"${session.title || 'Sesi'}"`;
+  }
+  if (moveFolderSelect) {
+    const allWs = new Set<string>(['default']);
+    workspacesList.forEach((w) => allWs.add(w.name));
+    moveFolderSelect.innerHTML = '';
+    Array.from(allWs).forEach((ws) => {
+      const opt = document.createElement('option');
+      opt.value = ws;
+      opt.textContent = ws === 'default' ? 'General (Default)' : ws;
+      if (session.workspace === ws || (!session.workspace && ws === 'default')) {
+        opt.selected = true;
+      }
+      moveFolderSelect.append(opt);
+    });
+  }
+  moveSessionModal.hidden = false;
+}
+
+function closeMoveSessionModal() {
+  if (moveSessionModal) moveSessionModal.hidden = true;
+  pendingMoveSessionId = null;
+}
+
 function formatSessionTime(timestamp: number) {
   const elapsed = Math.max(0, Date.now() - timestamp);
   if (elapsed < 60_000) return 'baru saja';
@@ -715,11 +868,31 @@ function formatSessionTime(timestamp: number) {
   return new Intl.DateTimeFormat('id-ID', { day: 'numeric', month: 'short' }).format(new Date(timestamp));
 }
 
+function startNewChatInWorkspace(workspaceName: string) {
+  activeWorkspaceName = workspaceName;
+  activeChatSessionId = '';
+  pendingChatAttachments = [];
+  userScrolledUp = false;
+  showDesktopPage('chat');
+  forceVisibleDesktopContent();
+  updateChatHeaderWorkspaceInfo();
+  renderChatSessions();
+  renderChatMessages();
+  renderPendingChatAttachments();
+  resetChatProcess();
+  chatInput?.focus();
+}
+
 function openChatSession(sessionId: string) {
+  const session = chatSessions.find((s) => s.id === sessionId);
+  if (session && session.workspace) {
+    activeWorkspaceName = session.workspace;
+  }
   activeChatSessionId = sessionId;
   userScrolledUp = false;
   showDesktopPage('chat');
   forceVisibleDesktopContent();
+  updateChatHeaderWorkspaceInfo();
   renderChatSessions();
   renderChatMessages();
   chatInput?.focus();
@@ -727,25 +900,170 @@ function openChatSession(sessionId: string) {
 
 function renderSidebarChatSessions() {
   if (!sidebarChatSessionList) return;
-  if (chatSessions.length === 0) {
-    sidebarChatSessionList.innerHTML = '<p class="sidebar-chat-empty">Belum ada sesi.</p>';
-    return;
-  }
-  sidebarChatSessionList.replaceChildren(...chatSessions.map((session) => {
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.className = 'sidebar-chat-session';
-    button.classList.toggle('active', session.id === activeChatSessionId);
-    button.setAttribute('aria-current', session.id === activeChatSessionId ? 'true' : 'false');
-    button.title = session.title;
+
+  const allWorkspaceNames = new Set<string>();
+  allWorkspaceNames.add('default');
+  workspacesList.forEach((w) => allWorkspaceNames.add(w.name));
+  chatSessions.forEach((s) => {
+    if (s.workspace) allWorkspaceNames.add(s.workspace);
+  });
+
+  const sortedWorkspaceNames = Array.from(allWorkspaceNames).sort((a, b) => {
+    if (a === 'default') return -1;
+    if (b === 'default') return 1;
+    return a.localeCompare(b);
+  });
+
+  const sessionGroups = new Map<string, DesktopChatSession[]>();
+  sortedWorkspaceNames.forEach((name) => sessionGroups.set(name, []));
+
+  chatSessions.forEach((session) => {
+    const ws = session.workspace || 'default';
+    if (!sessionGroups.has(ws)) {
+      sessionGroups.set(ws, []);
+    }
+    sessionGroups.get(ws)!.push(session);
+  });
+
+  const container = document.createElement('div');
+  container.className = 'sidebar-workspace-group-list';
+
+  sortedWorkspaceNames.forEach((wsName) => {
+    const sessions = sessionGroups.get(wsName) || [];
+    const isCollapsed = collapsedWorkspaces.has(wsName);
+    const isDefault = wsName === 'default';
+    const displayName = isDefault ? 'General' : wsName;
+
+    const groupCard = document.createElement('div');
+    groupCard.className = `sidebar-workspace-group${activeWorkspaceName === wsName ? ' group-active' : ''}`;
+
+    // Folder Header
+    const groupHeader = document.createElement('div');
+    groupHeader.className = 'workspace-group-header';
+    groupHeader.setAttribute('role', 'button');
+    groupHeader.setAttribute('tabindex', '0');
+
+    const headerLeft = document.createElement('div');
+    headerLeft.className = 'group-header-left';
+
+    const chevron = document.createElement('span');
+    chevron.className = 'group-chevron';
+    chevron.textContent = isCollapsed ? '▸' : '▾';
+
+    const icon = document.createElement('span');
+    icon.className = 'group-icon';
+    icon.textContent = isDefault ? '🌐' : '📁';
+
     const title = document.createElement('span');
-    title.textContent = session.title || 'Sesi tanpa judul';
-    const meta = document.createElement('small');
-    meta.textContent = `${session.messages.length} pesan · ${formatSessionTime(session.updated_at_ms)}`;
-    button.append(title, meta);
-    button.addEventListener('click', () => openChatSession(session.id));
-    return button;
-  }));
+    title.className = 'group-title';
+    title.textContent = displayName;
+    title.title = `Workspace: ${displayName}`;
+
+    const countPill = document.createElement('span');
+    countPill.className = 'group-count-pill';
+    countPill.textContent = String(sessions.length);
+
+    headerLeft.append(chevron, icon, title, countPill);
+
+    // Header Actions
+    const headerActions = document.createElement('div');
+    headerActions.className = 'group-header-actions';
+
+    const newChatInGroupBtn = document.createElement('button');
+    newChatInGroupBtn.type = 'button';
+    newChatInGroupBtn.className = 'group-btn-action';
+    newChatInGroupBtn.title = `Buat sesi baru di folder ${displayName}`;
+    newChatInGroupBtn.textContent = '+';
+    newChatInGroupBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      startNewChatInWorkspace(wsName);
+    });
+    headerActions.append(newChatInGroupBtn);
+
+    if (!isDefault) {
+      const deleteGroupBtn = document.createElement('button');
+      deleteGroupBtn.type = 'button';
+      deleteGroupBtn.className = 'group-btn-action group-btn-delete';
+      deleteGroupBtn.title = `Hapus folder ${displayName}`;
+      deleteGroupBtn.textContent = '×';
+      deleteGroupBtn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        if (confirm(`Hapus folder "${displayName}"? Sesi di dalamnya akan dipindahkan ke General.`)) {
+          await deleteWorkspace(wsName);
+        }
+      });
+      headerActions.append(deleteGroupBtn);
+    }
+
+    groupHeader.append(headerLeft, headerActions);
+
+    groupHeader.addEventListener('click', () => {
+      if (collapsedWorkspaces.has(wsName)) {
+        collapsedWorkspaces.delete(wsName);
+      } else {
+        collapsedWorkspaces.add(wsName);
+      }
+      renderSidebarChatSessions();
+    });
+
+    groupCard.append(groupHeader);
+
+    // Sibling Sessions List inside this folder
+    if (!isCollapsed) {
+      const sessionListEl = document.createElement('div');
+      sessionListEl.className = 'group-session-list';
+
+      if (sessions.length === 0) {
+        const emptyEl = document.createElement('div');
+        emptyEl.className = 'group-session-empty';
+        emptyEl.textContent = 'Belum ada sesi.';
+        sessionListEl.append(emptyEl);
+      } else {
+        sessions.forEach((session) => {
+          const sessionRow = document.createElement('div');
+          sessionRow.className = `sidebar-chat-session-row${session.id === activeChatSessionId ? ' active' : ''}`;
+
+          const sessionBtn = document.createElement('button');
+          sessionBtn.type = 'button';
+          sessionBtn.className = `sidebar-chat-session-btn sidebar-chat-session${session.id === activeChatSessionId ? ' active' : ''}`;
+          sessionBtn.title = session.title;
+
+          const sessionTitle = document.createElement('span');
+          sessionTitle.className = 'session-title-text';
+          sessionTitle.textContent = session.title || 'Sesi tanpa judul';
+
+          const sessionMeta = document.createElement('small');
+          sessionMeta.className = 'session-meta-text';
+          sessionMeta.textContent = `${session.messages.length} pesan · ${formatSessionTime(session.updated_at_ms)}`;
+
+          sessionBtn.append(sessionTitle, sessionMeta);
+          sessionBtn.addEventListener('click', () => {
+            activeWorkspaceName = wsName;
+            openChatSession(session.id);
+          });
+
+          // Options Button (⋮)
+          const optionsBtn = document.createElement('button');
+          optionsBtn.type = 'button';
+          optionsBtn.className = 'session-options-btn';
+          optionsBtn.title = 'Pindahkan sesi ke folder lain';
+          optionsBtn.textContent = '⋮';
+          optionsBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            openMoveSessionModal(session);
+          });
+
+          sessionRow.append(sessionBtn, optionsBtn);
+          sessionListEl.append(sessionRow);
+        });
+      }
+      groupCard.append(sessionListEl);
+    }
+
+    container.append(groupCard);
+  });
+
+  sidebarChatSessionList.replaceChildren(container);
 }
 
 let mermaidRenderTimer: ReturnType<typeof setTimeout> | null = null;
@@ -1950,6 +2268,7 @@ async function sendChatMessageText(message: string, sessionId: string, attachmen
     : {
         id: temporarySessionId,
         title: (message || attachments[0]?.name || 'Attachment').slice(0, 60),
+        workspace: activeWorkspaceName === 'default' ? undefined : activeWorkspaceName,
         created_at_ms: timestamp,
         updated_at_ms: timestamp,
         memory_context_count: 0,
@@ -1972,6 +2291,7 @@ async function sendChatMessageText(message: string, sessionId: string, attachmen
         session_id: existing?.id ?? null,
         message,
         request_id: requestId,
+        workspace: existing?.workspace || (activeWorkspaceName === 'default' ? null : activeWorkspaceName),
         attachments,
       },
     });
@@ -2921,7 +3241,7 @@ async function startDesktop() {
     const runtime = await invokeCommand<DesktopRuntimeStatus>('get_desktop_runtime_status');
     renderRuntime(runtime);
     await loadProviderConfig();
-    await Promise.all([loadChatSessions(), loadMemories(), loadSkills(), loadWorkflows(), loadMcpServers(), loadGraphify(), loadMedia()]);
+    await Promise.all([loadWorkspaces(), loadChatSessions(), loadMemories(), loadSkills(), loadWorkflows(), loadMcpServers(), loadGraphify(), loadMedia()]);
     await listenCommand<DesktopChatStreamEvent>('desktop-chat-stream', (event) => {
       applyChatStreamEvent(event.payload);
     });
@@ -3075,7 +3395,27 @@ mediaForm?.addEventListener('submit', (event) => {
   event.preventDefault();
   void importMedia();
 });
-clearMediaButton?.addEventListener('click', clearMediaForm);
-mediaSearchInput?.addEventListener('input', () => void searchMedia());
+sidebarNewFolderButton?.addEventListener('click', openFolderModal);
+closeFolderModalButton?.addEventListener('click', closeFolderModal);
+cancelFolderButton?.addEventListener('click', closeFolderModal);
+folderRandomBtn?.addEventListener('click', () => {
+  if (folderNameInput) {
+    folderNameInput.value = generateRandomWorkspaceName();
+  }
+});
+confirmCreateFolderButton?.addEventListener('click', async () => {
+  const name = folderNameInput?.value.trim();
+  if (!name) return;
+  await createWorkspace(name);
+  closeFolderModal();
+});
+closeMoveModalButton?.addEventListener('click', closeMoveSessionModal);
+cancelMoveSessionButton?.addEventListener('click', closeMoveSessionModal);
+confirmMoveSessionButton?.addEventListener('click', async () => {
+  if (!pendingMoveSessionId || !moveFolderSelect) return;
+  const targetWs = moveFolderSelect.value;
+  await moveSessionToWorkspace(pendingMoveSessionId, targetWs);
+  closeMoveSessionModal();
+});
 
 void startDesktop();

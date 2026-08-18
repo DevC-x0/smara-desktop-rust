@@ -7,6 +7,8 @@ async function installMockTauri(
   await page.addInitScript(({ providerOnline }) => {
     window.__SMARA_CHAT_SESSIONS__ = [];
     window.__SMARA_MEMORIES__ = [];
+    window.__SMARA_WORKSPACES__ = [{ name: 'default', path: null, created_at_ms: Date.now() }];
+    window.__SMARA_ACTIVE_WORKSPACE__ = 'default';
     window.__SMARA_SKILLS__ = [];
     window.__SMARA_WORKFLOWS__ = [];
     window.__SMARA_MCP_SERVERS__ = [];
@@ -139,6 +141,36 @@ async function installMockTauri(
         if (command === 'delete_desktop_chat_session') {
           window.__SMARA_CHAT_SESSIONS__ = window.__SMARA_CHAT_SESSIONS__.filter((session) => session.id !== args.id);
           return true;
+        }
+        if (command === 'move_desktop_chat_session_workspace') {
+          const session = window.__SMARA_CHAT_SESSIONS__.find((s) => s.id === args.sessionId);
+          if (session) {
+            session.workspace = args.targetWorkspace || undefined;
+          }
+          return session;
+        }
+        if (command === 'get_desktop_workspaces') {
+          return {
+            active: window.__SMARA_ACTIVE_WORKSPACE__ || 'default',
+            workspaces: window.__SMARA_WORKSPACES__ || [{ name: 'default', path: null, created_at_ms: Date.now() }],
+          };
+        }
+        if (command === 'create_desktop_workspace') {
+          const ws = { name: args.name, path: args.path, created_at_ms: Date.now() };
+          window.__SMARA_WORKSPACES__ = [...(window.__SMARA_WORKSPACES__ || [{ name: 'default', path: null, created_at_ms: Date.now() }]), ws];
+          window.__SMARA_ACTIVE_WORKSPACE__ = args.name;
+          return {
+            active: args.name,
+            workspaces: window.__SMARA_WORKSPACES__,
+          };
+        }
+        if (command === 'delete_desktop_workspace') {
+          window.__SMARA_WORKSPACES__ = (window.__SMARA_WORKSPACES__ || []).filter((w) => w.name !== args.name);
+          window.__SMARA_ACTIVE_WORKSPACE__ = 'default';
+          return {
+            active: 'default',
+            workspaces: window.__SMARA_WORKSPACES__,
+          };
         }
         if (command === 'list_desktop_memories') {
           return window.__SMARA_MEMORIES__;
@@ -770,3 +802,71 @@ test('switches cleanly between chat, memory, and dashboard without layout overla
   await expect(page.locator('#skill-section')).toBeVisible();
   await expect(page.locator('#chat-section')).toBeHidden();
 });
+
+test('supports creating custom and randomized workspace folders with connected sessions', async ({ page }) => {
+  await installMockTauri(page);
+  await page.goto('/');
+
+  await openDesktopPage(page, 'chat');
+  await expect(page.locator('#active-workspace-name')).toHaveText('General');
+
+  // Open Folder Modal
+  await page.locator('#sidebar-new-folder-button').click();
+  await expect(page.locator('#folder-modal')).toBeVisible();
+
+  // Test Random Folder Name Generator
+  await page.locator('#folder-random-btn').click();
+  const generatedName = await page.locator('#folder-name-input').inputValue();
+  expect(generatedName.length).toBeGreaterThan(3);
+
+  // Set specific folder name and create
+  await page.locator('#folder-name-input').fill('Project-Backend');
+  await page.locator('#confirm-create-folder-button').click();
+  await expect(page.locator('#folder-modal')).toBeHidden();
+
+  // Header active workspace should now reflect Project-Backend
+  await expect(page.locator('#active-workspace-name')).toHaveText('Project-Backend');
+
+  // Send chat message in this folder
+  await page.locator('#chat-input').fill('halo dari project backend');
+  await page.locator('#send-chat-button').click();
+  await expect(page.locator('.chat-message-assistant')).toBeVisible();
+
+  // Check that sidebar grouped accordion renders Project-Backend
+  const groupHeader = page.locator('.sidebar-workspace-group', { hasText: 'Project-Backend' });
+  await expect(groupHeader).toBeVisible();
+  await expect(groupHeader.locator('.sidebar-chat-session-btn')).toContainText('halo dari project backend');
+});
+
+test('supports moving chat sessions between folders', async ({ page }) => {
+  await installMockTauri(page);
+  await page.goto('/');
+
+  await openDesktopPage(page, 'chat');
+
+  // Create a session in default workspace
+  await page.locator('#chat-input').fill('sesi pertama di general');
+  await page.locator('#send-chat-button').click();
+  await expect(page.locator('.chat-message-assistant')).toBeVisible();
+
+  // Create folder Workspace-VPS
+  await page.locator('#sidebar-new-folder-button').click();
+  await page.locator('#folder-name-input').fill('Workspace-VPS');
+  await page.locator('#confirm-create-folder-button').click();
+  await expect(page.locator('#folder-modal')).toBeHidden();
+
+  // Now click options on the first session to move it
+  const sessionRow = page.locator('.sidebar-chat-session-row', { hasText: 'sesi pertama di general' });
+  await sessionRow.locator('.session-options-btn').click();
+  await expect(page.locator('#move-session-modal')).toBeVisible();
+
+  // Select Workspace-VPS and confirm
+  await page.locator('#move-folder-select').selectOption('Workspace-VPS');
+  await page.locator('#confirm-move-session-button').click();
+  await expect(page.locator('#move-session-modal')).toBeHidden();
+
+  // Verify session is now listed under Workspace-VPS group
+  const vpsGroup = page.locator('.sidebar-workspace-group', { hasText: 'Workspace-VPS' });
+  await expect(vpsGroup.locator('.sidebar-chat-session-btn')).toContainText('sesi pertama di general');
+});
+

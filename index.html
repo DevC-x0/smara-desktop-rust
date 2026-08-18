@@ -75,8 +75,11 @@
         <!-- Chat Sessions Section -->
         <div class="sidebar-chat-box">
           <div class="sidebar-chat-title">
-            <span>Recent Sessions</span>
-            <button id="sidebar-new-chat-button" class="btn-icon" type="button" title="New Chat">+</button>
+            <span class="sidebar-chat-title-text">Workspaces & Sessions</span>
+            <div class="sidebar-chat-actions">
+              <button id="sidebar-new-folder-button" class="btn-icon" type="button" title="Buat Folder / Workspace Baru">📁+</button>
+              <button id="sidebar-new-chat-button" class="btn-icon" type="button" title="Mulai Sesi Chat Baru">+</button>
+            </div>
           </div>
           <div id="sidebar-chat-session-list" class="sidebar-session-list">
             <p class="sidebar-chat-empty">Belum ada sesi.</p>
@@ -201,6 +204,11 @@
           <section id="chat-section" class="feature-panel chat-panel" data-page="chat">
             <div class="chat-header-bar">
               <div class="chat-header-info">
+                <div id="active-workspace-badge" class="chat-workspace-badge" title="Folder Workspace Aktif">
+                  <span class="workspace-icon">📁</span>
+                  <span id="active-workspace-name" class="workspace-name">Default</span>
+                  <span id="active-workspace-memory-pill" class="workspace-memory-pill">0 memori</span>
+                </div>
                 <div id="session-dropdown" class="session-dropdown">
                   <button id="session-dropdown-trigger" class="session-dropdown-btn" type="button" aria-expanded="false" aria-haspopup="true">
                     <span class="session-btn-icon">💬</span>
@@ -608,6 +616,54 @@
         </div>
       </div>
     </main>
+
+    <!-- New Folder / Workspace Modal Dialog -->
+    <div id="folder-modal" class="app-modal" hidden>
+      <div class="app-modal-backdrop"></div>
+      <div class="app-modal-dialog">
+        <div class="app-modal-header">
+          <h3>📁 Buat Workspace / Folder Baru</h3>
+          <button id="close-folder-modal-button" class="btn-icon" type="button">✕</button>
+        </div>
+        <div class="app-modal-body">
+          <p class="modal-desc">Semua sesi di dalam folder yang sama saling terhubung dan berbagi bank memori & cache yang sama.</p>
+          <div class="form-group">
+            <label for="folder-name-input">Nama Folder / Workspace</label>
+            <div class="folder-input-row">
+              <input id="folder-name-input" class="form-input" type="text" placeholder="misal: Backend-API, VPS-Deploy..." autocomplete="off" />
+              <button id="folder-random-btn" class="btn btn-secondary btn-sm" type="button" title="Generate nama acak">🎲 Acak</button>
+            </div>
+          </div>
+        </div>
+        <div class="app-modal-footer">
+          <button id="cancel-folder-button" class="btn btn-secondary" type="button">Batal</button>
+          <button id="confirm-create-folder-button" class="btn btn-primary" type="button">Buat Folder</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Move Session Modal Dialog -->
+    <div id="move-session-modal" class="app-modal" hidden>
+      <div class="app-modal-backdrop"></div>
+      <div class="app-modal-dialog">
+        <div class="app-modal-header">
+          <h3>📦 Pindahkan Sesi ke Folder</h3>
+          <button id="close-move-modal-button" class="btn-icon" type="button">✕</button>
+        </div>
+        <div class="app-modal-body">
+          <p class="modal-desc">Pilih folder tujuan untuk sesi <strong id="move-session-title-label"></strong>:</p>
+          <div class="form-group">
+            <label for="move-folder-select">Target Folder</label>
+            <select id="move-folder-select" class="form-select"></select>
+          </div>
+        </div>
+        <div class="app-modal-footer">
+          <button id="cancel-move-session-button" class="btn btn-secondary" type="button">Batal</button>
+          <button id="confirm-move-session-button" class="btn btn-primary" type="button">Pindahkan Sesi</button>
+        </div>
+      </div>
+    </div>
+
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
