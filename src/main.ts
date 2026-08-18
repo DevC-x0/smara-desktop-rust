@@ -1475,15 +1475,35 @@ function renderTerminalOutput(text: string): HTMLElement {
   const container = document.createElement('div');
   container.className = 'terminal-console-card';
 
-  const lines = text.split('\n');
-  const cmdLine = lines[0] || '$ command';
-  const statusLine = lines[1] || '';
-  const isSuccess = statusLine.includes('Success') || statusLine.includes('code 0');
+  // Extract Status from anywhere in the output
+  const statusMatch = text.match(/\[Status:\s*([^\]]+)\]/);
+  const statusRaw = statusMatch ? statusMatch[1] : '';
+  const isSuccess = statusRaw
+    ? (statusRaw.includes('Success') || statusRaw.includes('code 0') || statusRaw.includes('Exit 0'))
+    : (!text.includes('Error') && !text.includes('failed') && !text.includes('Exit failed'));
+
+  // Extract Command Header
+  let cmdLine = '$ command';
+  if (text.startsWith('$ ')) {
+    if (statusMatch && statusMatch.index !== undefined) {
+      cmdLine = text.slice(0, statusMatch.index).trim();
+    } else {
+      cmdLine = text.split('\n')[0] || '$ command';
+    }
+  }
+
+  // Extract Output Body (after [Status: ...])
+  let outputBody = '';
+  if (statusMatch && statusMatch.index !== undefined) {
+    outputBody = text.slice(statusMatch.index + statusMatch[0].length).trim();
+  } else {
+    outputBody = text;
+  }
 
   const header = document.createElement('div');
   header.className = 'terminal-console-header';
   header.innerHTML = `
-    <span class="terminal-prompt-title">${cmdLine}</span>
+    <span class="terminal-prompt-title" title="${cmdLine.replace(/"/g, '&quot;')}">${cmdLine}</span>
     <span class="terminal-status-badge ${isSuccess ? 'badge-success' : 'badge-failure'}">
       ${isSuccess ? '✓ Exit 0' : '✕ Exit Error'}
     </span>
@@ -1491,7 +1511,7 @@ function renderTerminalOutput(text: string): HTMLElement {
 
   const body = document.createElement('pre');
   body.className = 'terminal-console-body';
-  body.textContent = lines.slice(2).join('\n').trim() || text;
+  body.textContent = outputBody || '(Command produced no output)';
 
   container.append(header, body);
   return container;
