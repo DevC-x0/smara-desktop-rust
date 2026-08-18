@@ -896,8 +896,11 @@ async function loadWorkspaces() {
   }
 }
 
+let isLoadingWorkspaceFiles = false;
+
 function initSidebarViewTabs() {
   sidebarTabSessions?.addEventListener('click', () => {
+    if (activeSidebarView === 'sessions') return;
     activeSidebarView = 'sessions';
     sidebarTabSessions.classList.add('active');
     sidebarTabExplorer?.classList.remove('active');
@@ -908,6 +911,7 @@ function initSidebarViewTabs() {
   });
 
   sidebarTabExplorer?.addEventListener('click', () => {
+    if (activeSidebarView === 'explorer') return;
     activeSidebarView = 'explorer';
     sidebarTabExplorer.classList.add('active');
     sidebarTabSessions?.classList.remove('active');
@@ -915,12 +919,15 @@ function initSidebarViewTabs() {
     if (sidebarChatSessionList) sidebarChatSessionList.hidden = true;
     if (sidebarFileExplorerList) sidebarFileExplorerList.hidden = false;
     if (sidebarRefreshFilesButton) sidebarRefreshFilesButton.hidden = false;
-    void loadWorkspaceFiles();
-    void loadWorkspaceGitStatus();
+
+    // Zero-lag instant switch: only load from backend if not already cached
+    if (workspaceFileTree.length === 0) {
+      void loadWorkspaceFiles();
+    }
   });
 
   sidebarRefreshFilesButton?.addEventListener('click', () => {
-    void loadWorkspaceFiles();
+    void loadWorkspaceFiles(true);
     void loadWorkspaceGitStatus();
   });
 }
@@ -950,8 +957,19 @@ async function loadWorkspaceGitStatus() {
   }
 }
 
-async function loadWorkspaceFiles() {
+async function loadWorkspaceFiles(force = false) {
   if (!sidebarFileExplorerList) return;
+  if (isLoadingWorkspaceFiles) return;
+  if (!force && workspaceFileTree.length > 0) {
+    // If not forced and already cached, reuse rendered list immediately
+    return;
+  }
+
+  isLoadingWorkspaceFiles = true;
+  if (sidebarRefreshFilesButton) {
+    sidebarRefreshFilesButton.classList.add('rotating');
+  }
+
   try {
     const nodes = await invokeCommand<WorkspaceFileNode[]>('get_workspace_file_tree', {
       workspace: activeWorkspaceName === 'default' ? null : activeWorkspaceName,
@@ -961,6 +979,11 @@ async function loadWorkspaceFiles() {
     renderWorkspaceFileTree();
   } catch (error) {
     sidebarFileExplorerList.innerHTML = `<p class="sidebar-chat-empty">Gagal memuat file: ${error instanceof Error ? error.message : String(error)}</p>`;
+  } finally {
+    isLoadingWorkspaceFiles = false;
+    if (sidebarRefreshFilesButton) {
+      sidebarRefreshFilesButton.classList.remove('rotating');
+    }
   }
 }
 
@@ -1045,10 +1068,11 @@ function renderWorkspaceFileTree() {
     sidebarFileExplorerList.innerHTML = '<p class="sidebar-chat-empty">Workspace kosong atau tidak ada file.</p>';
     return;
   }
-  sidebarFileExplorerList.innerHTML = '';
+  const fragment = document.createDocumentFragment();
   for (const node of workspaceFileTree) {
-    sidebarFileExplorerList.append(renderFileNodeElement(node));
+    fragment.append(renderFileNodeElement(node));
   }
+  sidebarFileExplorerList.replaceChildren(fragment);
 }
 
 async function openFilePreviewModal(node: WorkspaceFileNode) {

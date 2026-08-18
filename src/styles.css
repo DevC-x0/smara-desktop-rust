@@ -2548,6 +2548,7 @@ svg[aria-roledescription="error"],
   color: #64748B;
   cursor: pointer;
   transition: all 120ms ease;
+  user-select: none;
 }
 
 .sidebar-tab-btn:hover {
@@ -2558,6 +2559,20 @@ svg[aria-roledescription="error"],
   background: rgba(190, 242, 100, 0.12);
   color: #BEF264;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+.btn-refresh-files.rotating svg {
+  animation: spin 0.6s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.sidebar-file-explorer,
+.sidebar-chat-session-list {
+  contain: content;
 }
 
 .sidebar-git-bar {
