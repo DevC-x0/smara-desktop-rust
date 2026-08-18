@@ -1,4 +1,4 @@
-import createDOMPurify from 'dompurify';
+import createDOMPurify from '../node_modules/dompurify/dist/purify.es.mjs';
 
 let instance: any = null;
 

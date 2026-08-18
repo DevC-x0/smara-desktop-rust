@@ -378,7 +378,7 @@ const mediaList = document.querySelector<HTMLElement>('#media-list');
 const mediaOutput = document.querySelector<HTMLElement>('#media-output');
 const mediaCount = document.querySelector<HTMLElement>('#media-count');
 const mediaStatus = document.querySelector<HTMLElement>('#media-status');
-const pageNavLinks = Array.from(document.querySelectorAll<HTMLAnchorElement>('.sidebar-nav a[data-page-target]'));
+const pageNavLinks = Array.from(document.querySelectorAll<HTMLAnchorElement>('a[data-page-target], .sidebar-menu a[data-page-target], .sidebar-nav a[data-page-target]'));
 const pageSections = Array.from(document.querySelectorAll<HTMLElement>('[data-page]'));
 
 let chatSessions: DesktopChatSession[] = [];
@@ -635,7 +635,7 @@ async function renderMermaidDiagrams(container: HTMLElement) {
       if (!isValid) continue;
 
       const { svg } = await mermaid.render(chartId, cleanChartCode);
-      if (!svg || svg.includes('Syntax error') || svg.includes('error-icon')) {
+      if (!svg || svg.includes('aria-roledescription="error"') || svg.includes('class="error-icon"')) {
         continue;
       }
 
@@ -675,6 +675,10 @@ async function renderMermaidDiagrams(container: HTMLElement) {
       });
     }
   }
+}
+
+if (typeof window !== 'undefined') {
+  (window as any).renderMermaidDiagrams = renderMermaidDiagrams;
 }
 
 function renderChatMessages() {

@@ -7,6 +7,10 @@ export default defineConfig({
   use: {
     baseURL: 'http://127.0.0.1:5187',
     trace: 'on-first-retry',
+    launchOptions: {
+      executablePath: '/usr/bin/chromium',
+      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-gpu'],
+    },
     ...devices['Desktop Chrome'],
   },
   webServer: {

@@ -4,9 +4,12 @@ import { defineConfig } from 'vitest/config';
 export default defineConfig({
   clearScreen: false,
   resolve: {
-    alias: {
-      dompurify: path.resolve(__dirname, 'src/dompurify-shim.ts'),
-    },
+    alias: [
+      {
+        find: /^dompurify$/,
+        replacement: path.resolve(__dirname, 'src/dompurify-shim.ts'),
+      },
+    ],
   },
   server: {
     port: 1420,
