@@ -1114,6 +1114,8 @@ input, textarea, select {
   margin: 6px 0 12px;
   overflow: hidden;
   max-width: 860px;
+  width: 100%;
+  min-height: 44px;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
   transition: all 180ms ease;
 }

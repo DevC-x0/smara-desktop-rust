@@ -1184,8 +1184,9 @@ function aggregateAgentProcesses(processes: ChatProcessEntry[]): UnifiedAgentAct
       } else {
         actions.push({
           id: `action-${actions.length + 1}`,
-          category: 'info',
-          title: 'Inisialisasi',
+          category: 'tool',
+          toolName: 'tool_call',
+          title: 'Eksekusi Tool',
           status: 'running',
           output: p.text,
           startTime: p.createdAt,
@@ -1197,7 +1198,7 @@ function aggregateAgentProcesses(processes: ChatProcessEntry[]): UnifiedAgentAct
         const toolName = match[1];
         const rawOutput = match[2];
         const runningTool = [...actions].reverse().find(
-          (a) => a.category === 'tool' && a.toolName === toolName && a.status === 'running'
+          (a) => a.category === 'tool' && (a.toolName === toolName || a.status === 'running')
         );
         if (runningTool) {
           runningTool.status = 'completed';
@@ -1222,6 +1223,17 @@ function aggregateAgentProcesses(processes: ChatProcessEntry[]): UnifiedAgentAct
             a.endTime = p.createdAt;
           }
         });
+      } else {
+        actions.push({
+          id: `action-${actions.length + 1}`,
+          category: 'tool',
+          toolName: 'result',
+          title: 'Hasil Tool',
+          status: 'completed',
+          output: p.text,
+          startTime: p.createdAt,
+          endTime: p.createdAt,
+        });
       }
     } else if (p.kind === 'reasoning') {
       const last = actions[actions.length - 1];
@@ -1239,6 +1251,16 @@ function aggregateAgentProcesses(processes: ChatProcessEntry[]): UnifiedAgentAct
           endTime: p.createdAt,
         });
       }
+    } else if (p.kind === 'thinking') {
+      actions.push({
+        id: `action-${actions.length + 1}`,
+        category: 'info',
+        title: 'Inisialisasi Agen',
+        status: 'completed',
+        output: p.text,
+        startTime: p.createdAt,
+        endTime: p.createdAt,
+      });
     } else if (p.kind === 'explore') {
       actions.push({
         id: `action-${actions.length + 1}`,
@@ -1259,6 +1281,34 @@ function aggregateAgentProcesses(processes: ChatProcessEntry[]): UnifiedAgentAct
         startTime: p.createdAt,
         endTime: p.createdAt,
       });
+    } else if (p.kind === 'skill') {
+      actions.push({
+        id: `action-${actions.length + 1}`,
+        category: 'tool',
+        toolName: 'skill_run',
+        title: 'Skill Execution',
+        status: 'completed',
+        output: p.text,
+        startTime: p.createdAt,
+        endTime: p.createdAt,
+      });
+    } else if (p.kind === 'analysis') {
+      actions.push({
+        id: `action-${actions.length + 1}`,
+        category: 'context',
+        title: 'Analisis Konteks',
+        status: 'completed',
+        output: p.text,
+        startTime: p.createdAt,
+        endTime: p.createdAt,
+      });
+    } else if (p.kind === 'complete') {
+      actions.forEach((a) => {
+        if (a.status === 'running') {
+          a.status = 'completed';
+          a.endTime = p.createdAt;
+        }
+      });
     } else if (p.kind === 'error') {
       const last = actions[actions.length - 1];
       if (last && last.status === 'running') {
@@ -1276,6 +1326,16 @@ function aggregateAgentProcesses(processes: ChatProcessEntry[]): UnifiedAgentAct
           endTime: p.createdAt,
         });
       }
+    } else {
+      actions.push({
+        id: `action-${actions.length + 1}`,
+        category: 'info',
+        title: 'Aktivitas Agen',
+        status: 'completed',
+        output: p.text,
+        startTime: p.createdAt,
+        endTime: p.createdAt,
+      });
     }
   }
 
@@ -1461,7 +1521,28 @@ function getActionCategoryBadge(action: UnifiedAgentAction): { icon: string; lab
 }
 
 function renderChatProcess(processes: ChatProcessEntry[], running: boolean) {
-  const actions = aggregateAgentProcesses(processes);
+  let actions = aggregateAgentProcesses(processes);
+  if (actions.length === 0) {
+    if (running) {
+      actions = [{
+        id: 'action-init',
+        category: 'info',
+        title: 'Inisialisasi Agen',
+        status: 'running',
+        output: 'Menyiapkan sesi agen dan memuat konteks lingkungan...',
+        startTime: Date.now(),
+      }];
+    } else {
+      actions = [{
+        id: 'action-done',
+        category: 'info',
+        title: 'Trajectory Selesai',
+        status: 'completed',
+        output: 'Respons selesai dieksekusi.',
+        startTime: Date.now(),
+      }];
+    }
+  }
   const container = document.createElement('div');
   container.className = `chat-process agent-trace-card${running ? ' trace-running' : ' trace-completed'}`;
 
