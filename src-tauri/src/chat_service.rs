@@ -444,7 +444,7 @@ fn request_anthropic_completion(
 
 fn stream_response_lines(
     response: reqwest::blocking::Response,
-    mut parse_delta: impl FnMut(&Value) -> Option<String>,
+    mut on_reasoning: impl FnMut(&str),
     mut on_delta: impl FnMut(&str),
     mut should_cancel: impl FnMut() -> bool,
 ) -> Result<String, String> {
@@ -456,6 +456,8 @@ fn stream_response_lines(
         return Err(format!("Provider returned HTTP {status}: {body}"));
     }
     let mut full = String::new();
+    let mut in_think_tag = false;
+
     for line in BufReader::new(response).lines() {
         if should_cancel() {
             return Err("Streaming Chat request was cancelled.".to_string());
@@ -470,12 +472,58 @@ fn stream_response_lines(
         }
         let event: Value = serde_json::from_str(data)
             .map_err(|error| format!("Provider stream returned invalid JSON: {error}"))?;
-        if let Some(delta) = parse_delta(&event).filter(|delta| !delta.is_empty()) {
-            if should_cancel() {
-                return Err("Streaming Chat request was cancelled.".to_string());
+
+        // 1. Check reasoning / thought delta
+        if let Some(reasoning) = event.pointer("/choices/0/delta/reasoning_content")
+            .or_else(|| event.pointer("/choices/0/delta/reasoning"))
+            .or_else(|| event.pointer("/choices/0/delta/thought"))
+            .and_then(Value::as_str)
+            .filter(|s| !s.is_empty())
+        {
+            on_reasoning(reasoning);
+        }
+
+        // 2. Check content delta (with embedded <think> handling)
+        if let Some(content) = event.pointer("/choices/0/delta/content")
+            .and_then(Value::as_str)
+            .filter(|s| !s.is_empty())
+        {
+            if content.contains("<think>") {
+                in_think_tag = true;
+                let parts: Vec<&str> = content.split("<think>").collect();
+                if !parts[0].is_empty() {
+                    full.push_str(parts[0]);
+                    on_delta(parts[0]);
+                }
+                if parts.len() > 1 && !parts[1].is_empty() {
+                    if parts[1].contains("</think>") {
+                        let think_parts: Vec<&str> = parts[1].split("</think>").collect();
+                        on_reasoning(think_parts[0]);
+                        in_think_tag = false;
+                        if think_parts.len() > 1 && !think_parts[1].is_empty() {
+                            full.push_str(think_parts[1]);
+                            on_delta(think_parts[1]);
+                        }
+                    } else {
+                        on_reasoning(parts[1]);
+                    }
+                }
+            } else if in_think_tag {
+                if content.contains("</think>") {
+                    let parts: Vec<&str> = content.split("</think>").collect();
+                    on_reasoning(parts[0]);
+                    in_think_tag = false;
+                    if parts.len() > 1 && !parts[1].is_empty() {
+                        full.push_str(parts[1]);
+                        on_delta(parts[1]);
+                    }
+                } else {
+                    on_reasoning(content);
+                }
+            } else {
+                full.push_str(content);
+                on_delta(content);
             }
-            full.push_str(&delta);
-            on_delta(&delta);
         }
     }
     if full.trim().is_empty() {
@@ -488,6 +536,7 @@ fn request_streaming_completion(
     config: &DesktopProviderConfig,
     messages: &[DesktopChatMessage],
     memories: &[DesktopMemory],
+    on_reasoning: impl FnMut(&str),
     on_delta: impl FnMut(&str),
     should_cancel: impl FnMut() -> bool,
 ) -> Result<String, String> {
@@ -496,6 +545,7 @@ fn request_streaming_completion(
             config,
             messages,
             memories,
+            on_reasoning,
             on_delta,
             should_cancel,
         );
@@ -523,12 +573,7 @@ fn request_streaming_completion(
         .map_err(|error| format!("Provider stream request failed: {error}"))?;
     stream_response_lines(
         response,
-        |event| {
-            event
-                .pointer("/choices/0/delta/content")
-                .and_then(Value::as_str)
-                .map(str::to_string)
-        },
+        on_reasoning,
         on_delta,
         should_cancel,
     )
@@ -538,8 +583,9 @@ fn request_anthropic_streaming_completion(
     config: &DesktopProviderConfig,
     messages: &[DesktopChatMessage],
     memories: &[DesktopMemory],
-    on_delta: impl FnMut(&str),
-    should_cancel: impl FnMut() -> bool,
+    mut on_reasoning: impl FnMut(&str),
+    mut on_delta: impl FnMut(&str),
+    mut should_cancel: impl FnMut() -> bool,
 ) -> Result<String, String> {
     let mut payload = json!({
         "model": config.model,
@@ -564,22 +610,48 @@ fn request_anthropic_streaming_completion(
     let response = request
         .send()
         .map_err(|error| format!("Anthropic stream request failed: {error}"))?;
-    stream_response_lines(
-        response,
-        |event| {
-            (event.get("type").and_then(Value::as_str) == Some("content_block_delta")
-                && event.pointer("/delta/type").and_then(Value::as_str) == Some("text_delta"))
-            .then(|| {
-                event
-                    .pointer("/delta/text")
-                    .and_then(Value::as_str)
-                    .unwrap_or_default()
-                    .to_string()
-            })
-        },
-        on_delta,
-        should_cancel,
-    )
+
+    let status = response.status();
+    if !status.is_success() {
+        let body = response
+            .text()
+            .unwrap_or_else(|_| "provider response body unavailable".to_string());
+        return Err(format!("Anthropic returned HTTP {status}: {body}"));
+    }
+    let mut full = String::new();
+    for line in BufReader::new(response).lines() {
+        if should_cancel() {
+            return Err("Streaming Chat request was cancelled.".to_string());
+        }
+        let line = line.map_err(|error| format!("Failed to read Anthropic stream: {error}"))?;
+        let Some(data) = line.strip_prefix("data:") else {
+            continue;
+        };
+        let data = data.trim();
+        if data.is_empty() || data == "[DONE]" {
+            continue;
+        }
+        let event: Value = serde_json::from_str(data)
+            .map_err(|error| format!("Anthropic stream returned invalid JSON: {error}"))?;
+        
+        if event.get("type").and_then(Value::as_str) == Some("content_block_delta") {
+            let delta_type = event.pointer("/delta/type").and_then(Value::as_str);
+            if delta_type == Some("thinking_delta") {
+                if let Some(text) = event.pointer("/delta/thinking").and_then(Value::as_str) {
+                    on_reasoning(text);
+                }
+            } else if delta_type == Some("text_delta") {
+                if let Some(text) = event.pointer("/delta/text").and_then(Value::as_str) {
+                    full.push_str(text);
+                    on_delta(text);
+                }
+            }
+        }
+    }
+    if full.trim().is_empty() {
+        return Err("Anthropic stream completed without text content.".to_string());
+    }
+    Ok(full)
 }
 
 fn send_chat_with(
@@ -731,10 +803,22 @@ pub async fn stream_desktop_chat(
     let request_id_for_done = request_id.clone();
     tauri::async_runtime::spawn_blocking(move || {
         let session = send_chat_with(&path, request, memories, |messages, memories| {
+            let event_app_for_thinking = event_app_for_delta.clone();
+            let request_id_for_thinking = request_id.clone();
             let result = request_streaming_completion(
                 &config,
                 messages,
                 memories,
+                move |reasoning| {
+                    let _ = event_app_for_thinking.emit(
+                        "desktop-chat-stream",
+                        DesktopChatStreamEvent {
+                            request_id: request_id_for_thinking.clone(),
+                            kind: "thinking_delta".to_string(),
+                            delta: reasoning.to_string(),
+                        },
+                    );
+                },
                 |delta| {
                     let _ = event_app_for_delta.emit(
                         "desktop-chat-stream",

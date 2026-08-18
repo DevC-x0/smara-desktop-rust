@@ -842,38 +842,141 @@ function chatProcessLabel(kind: string) {
   return labels[kind] ?? kind.replace(/_/g, ' ');
 }
 
-function renderChatProcess(processes: ChatProcessEntry[], running: boolean) {
-  const details = document.createElement('details');
-  details.className = `chat-process${running ? ' chat-process-running' : ''}`;
-  details.open = running;
-
-  const summary = document.createElement('summary');
-  const state = document.createElement('span');
-  state.className = 'chat-process-state';
-  state.textContent = running ? `${chatProcessLabel(processes[processes.length - 1]?.kind ?? 'thinking')}...` : 'Thinking Process';
-  const count = document.createElement('span');
-  count.className = 'chat-process-count';
-  count.textContent = running ? 'sedang berjalan' : `${processes.length} langkah · Selesai`;
-  summary.append(state, count);
-
-  const list = document.createElement('div');
-  list.className = 'chat-process-list';
-  for (const process of processes) {
-    const item = document.createElement('div');
-    item.className = `chat-process-item chat-process-${process.kind.replace(/_/g, '-')}`;
-    const marker = document.createElement('span');
-    marker.className = 'chat-process-marker';
-    const content = document.createElement('div');
-    const label = document.createElement('strong');
-    label.textContent = chatProcessLabel(process.kind);
-    const body = document.createElement('p');
-    body.textContent = process.text;
-    content.append(label, body);
-    item.append(marker, content);
-    list.append(item);
+function chatProcessIcon(kind: string): string {
+  switch (kind) {
+    case 'thinking':
+    case 'reasoning':
+      return '🧠';
+    case 'analysis':
+      return '🔍';
+    case 'memory':
+      return '💾';
+    case 'tool_start':
+    case 'tool':
+      return '🛠️';
+    case 'tool_done':
+      return '⚡';
+    case 'skill':
+    case 'skill_start':
+    case 'skill_done':
+      return '🪄';
+    case 'explore':
+      return '📂';
+    case 'complete':
+      return '✅';
+    case 'error':
+      return '❌';
+    default:
+      return '✦';
   }
-  details.append(summary, list);
-  return details;
+}
+
+function renderChatProcess(processes: ChatProcessEntry[], running: boolean) {
+  const container = document.createElement('div');
+  container.className = `agent-trace-card${running ? ' trace-running' : ' trace-completed'}`;
+
+  // Trace Header Bar
+  const header = document.createElement('div');
+  header.className = 'trace-header';
+
+  const headerLeft = document.createElement('div');
+  headerLeft.className = 'trace-header-left';
+
+  const statusIndicator = document.createElement('span');
+  statusIndicator.className = running ? 'trace-pulse-badge' : 'trace-done-badge';
+  statusIndicator.innerHTML = running
+    ? '<span class="pulse-ring"></span><span>AGENT LIVE</span>'
+    : '<span>✓ TRACE COMPLETE</span>';
+
+  const activeTitle = document.createElement('span');
+  activeTitle.className = 'trace-title';
+  const latestProcess = processes[processes.length - 1];
+  activeTitle.textContent = running
+    ? `${chatProcessIcon(latestProcess?.kind ?? 'thinking')} ${chatProcessLabel(latestProcess?.kind ?? 'thinking')}...`
+    : `✦ Agent Execution (${processes.length} steps)`;
+
+  headerLeft.append(statusIndicator, activeTitle);
+
+  const headerRight = document.createElement('div');
+  headerRight.className = 'trace-header-right';
+
+  const toggleBtn = document.createElement('button');
+  toggleBtn.type = 'button';
+  toggleBtn.className = 'trace-toggle-btn';
+  toggleBtn.textContent = running ? 'Tutup ▴' : 'Detail ▾';
+
+  headerRight.append(toggleBtn);
+  header.append(headerLeft, headerRight);
+  container.append(header);
+
+  // Trace Steps Timeline
+  const timeline = document.createElement('div');
+  timeline.className = 'trace-timeline';
+  if (!running) {
+    timeline.classList.add('collapsed');
+  }
+
+  toggleBtn.addEventListener('click', () => {
+    const isCollapsed = timeline.classList.toggle('collapsed');
+    toggleBtn.textContent = isCollapsed ? 'Detail ▾' : 'Tutup ▴';
+  });
+
+  const startTime = processes[0]?.createdAt ?? Date.now();
+
+  processes.forEach((process, index) => {
+    const isLast = index === processes.length - 1;
+    const isStepRunning = running && isLast;
+
+    const stepItem = document.createElement('div');
+    stepItem.className = `trace-step-item step-${process.kind.replace(/_/g, '-')}${isStepRunning ? ' step-active' : ''}`;
+
+    const stepIconCol = document.createElement('div');
+    stepIconCol.className = 'step-icon-col';
+
+    const iconBadge = document.createElement('span');
+    iconBadge.className = `step-icon-badge ${isStepRunning ? 'badge-pulsing' : ''}`;
+    iconBadge.textContent = chatProcessIcon(process.kind);
+
+    const stepLine = document.createElement('div');
+    stepLine.className = 'step-connector-line';
+    stepIconCol.append(iconBadge, stepLine);
+
+    const stepContent = document.createElement('div');
+    stepContent.className = 'step-content';
+
+    const stepMeta = document.createElement('div');
+    stepMeta.className = 'step-meta';
+
+    const stepLabel = document.createElement('strong');
+    stepLabel.className = 'step-label';
+    stepLabel.textContent = chatProcessLabel(process.kind);
+
+    const stepTime = document.createElement('span');
+    stepTime.className = 'step-time';
+    const elapsedSec = ((process.createdAt - startTime) / 1000).toFixed(1);
+    stepTime.textContent = `+${elapsedSec}s`;
+
+    stepMeta.append(stepLabel, stepTime);
+
+    const stepBody = document.createElement('div');
+    stepBody.className = 'step-body';
+
+    if (process.kind === 'reasoning') {
+      const reasoningBox = document.createElement('div');
+      reasoningBox.className = 'step-reasoning-box';
+      reasoningBox.textContent = process.text;
+      stepBody.append(reasoningBox);
+    } else {
+      stepBody.textContent = process.text;
+    }
+
+    stepContent.append(stepMeta, stepBody);
+    stepItem.append(stepIconCol, stepContent);
+    timeline.append(stepItem);
+  });
+
+  container.append(timeline);
+  return container;
 }
 
 function resetChatProcess() {
@@ -884,7 +987,7 @@ function appendChatProcess(kind: string, text: string) {
   const content = text.trim();
   if (!content) return;
   activeChatProcesses.push({ kind, text: content, createdAt: Date.now() });
-  activeChatProcesses = activeChatProcesses.slice(-24);
+  activeChatProcesses = activeChatProcesses.slice(-40);
 }
 
 function applyChatStreamEvent(event: DesktopChatStreamEvent) {
@@ -892,15 +995,27 @@ function applyChatStreamEvent(event: DesktopChatStreamEvent) {
     return;
   }
 
+  if (event.kind === 'thinking_delta') {
+    const last = activeChatProcesses[activeChatProcesses.length - 1];
+    if (last && last.kind === 'reasoning') {
+      last.text += event.delta;
+    } else {
+      activeChatProcesses.push({ kind: 'reasoning', text: event.delta, createdAt: Date.now() });
+    }
+    if (chatStatus) chatStatus.textContent = '🧠 Reasoning & Thinking...';
+    renderChatMessages();
+    return;
+  }
+
   if (event.kind !== 'delta') {
     appendChatProcess(event.kind, event.delta);
     if (chatStatus) {
-      if (event.kind === 'thinking') chatStatus.textContent = 'Thinking...';
-      if (event.kind === 'analysis') chatStatus.textContent = 'Menganalisis konteks...';
-      if (event.kind === 'memory') chatStatus.textContent = 'Menyimpan self-improvement memory...';
-      if (event.kind === 'skill') chatStatus.textContent = 'Memperbarui skill hasil pembelajaran...';
-      if (event.kind === 'tool_start') chatStatus.textContent = 'Memanggil tool/provider...';
-      if (event.kind === 'tool_done') chatStatus.textContent = 'Tool/provider selesai, menunggu hasil akhir...';
+      if (event.kind === 'thinking') chatStatus.textContent = '🧠 Thinking...';
+      if (event.kind === 'analysis') chatStatus.textContent = '🔍 Menganalisis konteks...';
+      if (event.kind === 'memory') chatStatus.textContent = '💾 Membaca memori...';
+      if (event.kind === 'skill') chatStatus.textContent = '🪄 Memproses skills...';
+      if (event.kind === 'tool_start') chatStatus.textContent = '🛠️ Memanggil tools...';
+      if (event.kind === 'tool_done') chatStatus.textContent = '⚡ Tools selesai...';
       if (event.kind === 'error') chatStatus.textContent = event.delta;
     }
     renderChatMessages();

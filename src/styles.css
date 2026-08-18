@@ -818,94 +818,211 @@ input, textarea, select {
   color: var(--text-main);
 }
 
-/* Thinking & Process Card */
-.chat-process {
-  background: #0F160F;
+/* Antigravity / Codex Interactive Agent Execution Trace */
+.agent-trace-card {
+  background: #0C110C;
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: var(--radius-md);
-  margin: 4px 0 10px;
+  margin: 6px 0 12px;
   overflow: hidden;
   max-width: 860px;
-  transition: all 160ms ease;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+  transition: all 180ms ease;
 }
 
-.chat-process-running {
+.agent-trace-card.trace-running {
   border-color: rgba(190, 242, 100, 0.35);
-  background: rgba(190, 242, 100, 0.04);
-  box-shadow: 0 0 16px rgba(190, 242, 100, 0.06);
+  background: rgba(190, 242, 100, 0.03);
+  box-shadow: 0 0 20px rgba(190, 242, 100, 0.08);
 }
 
-.chat-process summary {
+.trace-header {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 8px 14px;
-  cursor: pointer;
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--text-muted);
-  user-select: none;
+  justify-content: space-between;
+  padding: 10px 14px;
   background: rgba(255, 255, 255, 0.02);
-  transition: background 120ms ease;
+  border-bottom: 1px solid var(--border);
+  user-select: none;
 }
 
-.chat-process summary:hover {
-  color: var(--text-main);
-  background: rgba(255, 255, 255, 0.05);
+.trace-header-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
-.chat-process-running summary {
-  color: var(--accent);
-}
-
-.chat-process-state {
-  font-weight: 600;
+.trace-pulse-badge {
   display: flex;
   align-items: center;
   gap: 6px;
-}
-
-.chat-process-state::before {
-  content: "✦";
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  background: rgba(190, 242, 100, 0.12);
+  border: 1px solid rgba(190, 242, 100, 0.28);
   color: var(--accent);
-  font-size: 11px;
+  padding: 2px 7px;
+  border-radius: 12px;
 }
 
-.chat-process-count {
-  font-size: 11px;
-  color: var(--text-faint);
-  margin-left: auto;
-}
-
-.chat-process-list {
-  padding: 10px 14px 14px;
-  border-top: 1px solid var(--border);
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  font-size: 12px;
-  background: #090E09;
-}
-
-.chat-process-item {
-  display: flex;
-  gap: 10px;
-  align-items: flex-start;
-  color: var(--text-muted);
-}
-
-.chat-process-marker {
+.pulse-ring {
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: var(--text-faint);
-  margin-top: 5px;
+  background: var(--accent);
+  box-shadow: 0 0 8px var(--accent);
+  animation: pulse-ring 1.4s infinite cubic-bezier(0.25, 1, 0.5, 1);
+}
+
+@keyframes pulse-ring {
+  0% { transform: scale(0.9); opacity: 1; }
+  50% { transform: scale(1.3); opacity: 0.6; }
+  100% { transform: scale(0.9); opacity: 1; }
+}
+
+.trace-done-badge {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  padding: 2px 7px;
+  border-radius: 12px;
+}
+
+.trace-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-main);
+  letter-spacing: -0.01em;
+}
+
+.trace-toggle-btn {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 500;
+  padding: 3px 8px;
+  cursor: pointer;
+  transition: all 120ms ease;
+}
+
+.trace-toggle-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-main);
+}
+
+.trace-timeline {
+  padding: 12px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  background: #090E09;
+  transition: max-height 200ms ease;
+}
+
+.trace-timeline.collapsed {
+  display: none;
+}
+
+.trace-step-item {
+  display: flex;
+  gap: 12px;
+  position: relative;
+  min-height: 40px;
+}
+
+.step-icon-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 22px;
   flex-shrink: 0;
 }
 
-.chat-process-running .chat-process-item:last-child .chat-process-marker {
-  background: var(--accent);
-  box-shadow: 0 0 6px var(--accent);
+.step-icon-badge {
+  font-size: 13px;
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 50%;
+  z-index: 2;
+}
+
+.step-icon-badge.badge-pulsing {
+  background: rgba(190, 242, 100, 0.15);
+  border: 1px solid var(--accent);
+  box-shadow: 0 0 10px rgba(190, 242, 100, 0.2);
+}
+
+.step-connector-line {
+  width: 1px;
+  flex: 1;
+  background: rgba(255, 255, 255, 0.08);
+  margin: 2px 0;
+}
+
+.trace-step-item:last-child .step-connector-line {
+  display: none;
+}
+
+.step-content {
+  flex: 1;
+  padding-bottom: 12px;
+}
+
+.step-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 2px;
+}
+
+.step-label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-main);
+}
+
+.step-time {
+  font-size: 10px;
+  font-family: var(--font-mono);
+  color: var(--text-faint);
+}
+
+.step-body {
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--text-muted);
+  word-break: break-word;
+}
+
+.step-active .step-label {
+  color: var(--accent);
+}
+
+.step-reasoning-box {
+  background: #060906;
+  border: 1px solid rgba(190, 242, 100, 0.15);
+  border-radius: 6px;
+  padding: 10px 12px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.5;
+  color: #D2E4CC;
+  max-height: 240px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  margin-top: 4px;
 }
 
 .chat-process-item strong {
