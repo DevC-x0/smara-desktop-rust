@@ -228,17 +228,27 @@
             <div class="chat-composer-container">
               <form id="chat-form" class="chat-composer">
                 <div id="chat-attachments" class="chat-attachment-strip" hidden></div>
-                <div class="composer-input-row">
-                  <button id="attach-chat-button" class="btn-attach" type="button" title="Lampirkan file/gambar">+</button>
-                  <textarea id="chat-input" class="composer-textarea" placeholder="Tulis instruksi atau paste kode/gambar..." rows="1"></textarea>
-                  <button id="send-chat-button" class="btn btn-primary btn-send" type="submit">Kirim</button>
+                <div class="composer-main-area">
+                  <textarea id="chat-input" class="composer-textarea" placeholder="Tulis instruksi, tanyakan kode, jalankan perintah..." rows="1"></textarea>
+                </div>
+                <div class="composer-bottom-bar">
+                  <div class="composer-actions-left">
+                    <button id="attach-chat-button" class="btn-attach-pill" type="button" title="Lampirkan file / gambar">
+                      <span class="attach-icon">📎</span>
+                      <span class="attach-text">Lampirkan</span>
+                    </button>
+                    <span id="chat-memory-context" class="composer-context-pill"></span>
+                  </div>
+                  <div class="composer-actions-right">
+                    <span id="chat-status" class="composer-status-text"></span>
+                    <button id="send-chat-button" class="btn-send-executive" type="submit" title="Kirim instruksi (Enter)">
+                      <span>Kirim</span>
+                      <kbd class="send-kbd-hint">↵</kbd>
+                    </button>
+                  </div>
                 </div>
                 <input id="chat-file-input" type="file" multiple hidden />
               </form>
-              <div class="chat-composer-meta">
-                <span id="chat-status" class="panel-status"></span>
-                <span id="chat-memory-context" class="context-copy"></span>
-              </div>
             </div>
           </section>
 

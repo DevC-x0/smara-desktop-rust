@@ -11,6 +11,8 @@ marked.setOptions({
 
 mermaid.initialize({
   startOnLoad: false,
+  suppressErrorRendering: true,
+  securityLevel: 'loose',
   theme: 'dark',
   darkMode: true,
   themeVariables: {
@@ -595,48 +597,62 @@ function renderSidebarChatSessions() {
 let mermaidRenderTimer: ReturnType<typeof setTimeout> | null = null;
 
 async function renderMermaidDiagrams(container: HTMLElement) {
+  if (activeChatStreamRequestId) return;
+
   const codeBlocks = container.querySelectorAll<HTMLElement>('pre code.language-mermaid, pre code.language-chart');
   let idCounter = 0;
   for (const block of Array.from(codeBlocks)) {
     const parentPre = block.parentElement;
     if (!parentPre) continue;
+    if (parentPre.classList.contains('mermaid-rendered')) continue;
+
     const rawChartCode = block.textContent?.trim() || '';
     if (!rawChartCode) continue;
 
     const chartId = `mermaid-svg-${Date.now()}-${++idCounter}`;
-    const chartWrapper = document.createElement('div');
-    chartWrapper.className = 'mermaid-chart-wrapper';
-
-    const chartHeader = document.createElement('div');
-    chartHeader.className = 'mermaid-chart-header';
-    chartHeader.innerHTML = `
-      <span class="mermaid-chart-title">📊 Visual Diagram / Chart</span>
-      <button type="button" class="mermaid-copy-btn">📋 Salin Source</button>
-    `;
-    const copyBtn = chartHeader.querySelector('.mermaid-copy-btn') as HTMLButtonElement;
-    if (copyBtn) {
-      copyBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        navigator.clipboard.writeText(rawChartCode).then(() => {
-          copyBtn.textContent = '✓ Tersalin';
-          setTimeout(() => {
-            copyBtn.textContent = '📋 Salin Source';
-          }, 2000);
-        });
-      });
-    }
-
-    const chartContent = document.createElement('div');
-    chartContent.className = 'mermaid-chart-content';
-    chartContent.id = chartId;
 
     try {
+      const isValid = await mermaid.parse(rawChartCode, { suppressErrors: true });
+      if (!isValid) continue;
+
       const { svg } = await mermaid.render(chartId, rawChartCode);
+      if (!svg || svg.includes('Syntax error') || svg.includes('error-icon')) {
+        continue;
+      }
+
+      const chartWrapper = document.createElement('div');
+      chartWrapper.className = 'mermaid-chart-wrapper mermaid-rendered';
+
+      const chartHeader = document.createElement('div');
+      chartHeader.className = 'mermaid-chart-header';
+      chartHeader.innerHTML = `
+        <span class="mermaid-chart-title">📊 Visual Diagram / Chart</span>
+        <button type="button" class="mermaid-copy-btn">📋 Salin Source</button>
+      `;
+      const copyBtn = chartHeader.querySelector('.mermaid-copy-btn') as HTMLButtonElement;
+      if (copyBtn) {
+        copyBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          navigator.clipboard.writeText(rawChartCode).then(() => {
+            copyBtn.textContent = '✓ Tersalin';
+            setTimeout(() => {
+              copyBtn.textContent = '📋 Salin Source';
+            }, 2000);
+          });
+        });
+      }
+
+      const chartContent = document.createElement('div');
+      chartContent.className = 'mermaid-chart-content';
       chartContent.innerHTML = svg;
       chartWrapper.append(chartHeader, chartContent);
       parentPre.replaceWith(chartWrapper);
     } catch {
-      // Keep original code block on parse failure
+      document.querySelectorAll('#dmermaid, [id*="dmermaid"], svg[aria-roledescription="error"]').forEach((el) => {
+        if (!el.closest('.mermaid-chart-content')) {
+          el.remove();
+        }
+      });
     }
   }
 }
