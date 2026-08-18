@@ -1668,11 +1668,6 @@ function renderChatProcess(processes: ChatProcessEntry[], running: boolean) {
     toggleTimeline();
   });
 
-  header.style.cursor = 'pointer';
-  header.addEventListener('click', () => {
-    toggleTimeline();
-  });
-
   const startTime = actions[0]?.startTime ?? Date.now();
 
   actions.forEach((action, index) => {
@@ -1781,6 +1776,11 @@ function renderChatProcess(processes: ChatProcessEntry[], running: boolean) {
   container.append(rawBox);
 
   container.append(timeline);
+  if (running) {
+    window.requestAnimationFrame(() => {
+      timeline.scrollTop = timeline.scrollHeight;
+    });
+  }
   return container;
 }
 

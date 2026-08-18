@@ -1235,12 +1235,34 @@ input, textarea, select {
 
 /* Unified Trace Action Cards */
 .trace-timeline {
+  max-height: 440px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   padding: 12px 14px;
   display: flex;
   flex-direction: column;
   gap: 8px;
   background: #070B07;
   border-top: 1px solid var(--border);
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+}
+
+.trace-timeline::-webkit-scrollbar {
+  width: 6px;
+}
+
+.trace-timeline::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.trace-timeline::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.18);
+  border-radius: 3px;
+}
+
+.trace-timeline::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.3);
 }
 
 .trace-timeline.collapsed {
