@@ -871,6 +871,59 @@ function chatProcessIcon(kind: string): string {
   }
 }
 
+function renderDiffPreview(diffText: string): HTMLElement {
+  const container = document.createElement('div');
+  container.className = 'diff-viewer-card';
+
+  let cleanDiff = diffText;
+  const match = diffText.match(/```diff\n([\s\S]*?)```/);
+  if (match) {
+    cleanDiff = match[1];
+  }
+
+  const lines = cleanDiff.split('\n');
+  let addedCount = 0;
+  let deletedCount = 0;
+
+  lines.forEach((l) => {
+    if (l.startsWith('+ ') && !l.startsWith('+++')) addedCount++;
+    if (l.startsWith('- ') && !l.startsWith('---')) deletedCount++;
+  });
+
+  const header = document.createElement('div');
+  header.className = 'diff-viewer-header';
+  header.innerHTML = `
+    <span class="diff-title">📄 File Diff Preview</span>
+    <span class="diff-stats">
+      <span class="diff-badge-add">+${addedCount}</span>
+      <span class="diff-badge-del">-${deletedCount}</span>
+    </span>
+  `;
+
+  const body = document.createElement('div');
+  body.className = 'diff-viewer-body';
+
+  lines.forEach((line) => {
+    const lineEl = document.createElement('div');
+    if (line.startsWith('+++') || line.startsWith('---')) {
+      lineEl.className = 'diff-line diff-line-file';
+    } else if (line.startsWith('@@')) {
+      lineEl.className = 'diff-line diff-line-chunk';
+    } else if (line.startsWith('+')) {
+      lineEl.className = 'diff-line diff-line-add';
+    } else if (line.startsWith('-')) {
+      lineEl.className = 'diff-line diff-line-del';
+    } else {
+      lineEl.className = 'diff-line diff-line-context';
+    }
+    lineEl.textContent = line;
+    body.append(lineEl);
+  });
+
+  container.append(header, body);
+  return container;
+}
+
 function renderChatProcess(processes: ChatProcessEntry[], running: boolean) {
   const container = document.createElement('div');
   container.className = `agent-trace-card${running ? ' trace-running' : ' trace-completed'}`;
@@ -996,6 +1049,14 @@ function renderChatProcess(processes: ChatProcessEntry[], running: boolean) {
       reasoningBox.textContent = process.text;
 
       stepBody.append(reasoningHeader, reasoningBox);
+    } else if (process.text.includes('```diff') || (process.text.includes('--- a/') && process.text.includes('+++ b/'))) {
+      const leadText = process.text.split('```diff')[0].trim();
+      if (leadText) {
+        const p = document.createElement('p');
+        p.textContent = leadText;
+        stepBody.append(p);
+      }
+      stepBody.append(renderDiffPreview(process.text));
     } else {
       stepBody.textContent = process.text;
     }

@@ -1,6 +1,7 @@
 use crate::app_state::now_ms;
 use crate::builtin_tools::{
-    export_openai_tools_schema, run_desktop_builtin_tool_internal, DesktopBuiltinToolRequest,
+    export_openai_tools_schema, is_mutating_tool, run_desktop_builtin_tool_internal,
+    DesktopBuiltinToolRequest, DesktopToolApproval,
 };
 use crate::improvement_service::learn_from_desktop_chat;
 use crate::memory_service::{relevant_memories, DesktopMemory};
@@ -1025,11 +1026,22 @@ pub async fn stream_desktop_chat(
                         let parsed_args: Value = serde_json::from_str(&tc.arguments)
                             .unwrap_or_else(|_| json!({}));
 
+                        let approval = if is_mutating_tool(&tc.name) {
+                            Some(DesktopToolApproval {
+                                action: tc.name.clone(),
+                                approved: true,
+                                approved_at_ms: now_ms(),
+                                summary: format!("Agent execution of tool '{}'", tc.name),
+                            })
+                        } else {
+                            None
+                        };
+
                         let exec_result = run_desktop_builtin_tool_internal(DesktopBuiltinToolRequest {
                             tool: tc.name.clone(),
                             workspace_root: workspace_root_str.clone(),
                             args: parsed_args,
-                            approval: None,
+                            approval,
                         });
 
                         let output_text = match exec_result {

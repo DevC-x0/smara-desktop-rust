@@ -1087,6 +1087,92 @@ input, textarea, select {
   margin-top: 4px;
 }
 
+/* File Diff Preview Visualizer */
+.diff-viewer-card {
+  margin-top: 8px;
+  background: #050805;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  overflow: hidden;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.diff-viewer-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px;
+  background: rgba(255, 255, 255, 0.03);
+  border-bottom: 1px solid var(--border);
+  font-size: 11px;
+}
+
+.diff-title {
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.diff-stats {
+  display: flex;
+  gap: 6px;
+}
+
+.diff-badge-add {
+  background: rgba(190, 242, 100, 0.15);
+  color: var(--accent);
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-weight: 700;
+  font-size: 10px;
+}
+
+.diff-badge-del {
+  background: rgba(248, 113, 113, 0.15);
+  color: var(--danger);
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-weight: 700;
+  font-size: 10px;
+}
+
+.diff-viewer-body {
+  padding: 8px 0;
+  max-height: 280px;
+  overflow-y: auto;
+  overflow-x: auto;
+}
+
+.diff-line {
+  padding: 1px 12px;
+  white-space: pre;
+}
+
+.diff-line-file {
+  color: var(--text-faint);
+  font-weight: 600;
+}
+
+.diff-line-chunk {
+  color: #60A5FA;
+  background: rgba(96, 165, 250, 0.06);
+}
+
+.diff-line-add {
+  background: rgba(190, 242, 100, 0.12);
+  color: #D2F890;
+}
+
+.diff-line-del {
+  background: rgba(248, 113, 113, 0.12);
+  color: #FCA5A5;
+}
+
+.diff-line-context {
+  color: var(--text-muted);
+}
+
 .chat-process-item strong {
   font-size: 11px;
   color: var(--text-main);

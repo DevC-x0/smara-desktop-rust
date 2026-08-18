@@ -396,7 +396,7 @@ fn tool(
     }
 }
 
-fn is_mutating_tool(name: &str) -> bool {
+pub fn is_mutating_tool(name: &str) -> bool {
     matches!(name, "write_file" | "edit_file" | "delete_file" | "copy_file" | "rename_file" | "apply_diff" | "create_terminal" | "kill_process" | "git_commit")
 }
 
@@ -676,27 +676,46 @@ fn execute(root: &Path, tool: &str, args: &Value) -> Result<String, String> {
                     .map_err(|error| format!("Failed to create target directory: {error}"))?;
             }
             fs::write(&path, content).map_err(|error| format!("Failed to write file: {error}"))?;
+            let rel = path.strip_prefix(root).unwrap_or(&path).display();
+            let line_count = content.lines().count();
+            let diff_preview = content
+                .lines()
+                .take(30)
+                .map(|l| format!("+ {l}"))
+                .collect::<Vec<_>>()
+                .join("\n");
             Ok(format!(
-                "Wrote {}",
-                path.strip_prefix(root).unwrap_or(&path).display()
+                "Wrote {rel} ({line_count} lines)\n\n```diff\n--- /dev/null\n+++ b/{rel}\n{diff_preview}\n```"
             ))
         }
         "edit_file" => {
             let path = existing_workspace_path(root, args, "path")?;
-            let old = get_string(args, "old_content")?;
-            let new = get_string(args, "new_content")?;
+            let old = get_string(args, "target")
+                .or_else(|_| get_string(args, "old_content"))?;
+            let new = get_string(args, "replacement")
+                .or_else(|_| get_string(args, "new_content"))?;
             let content = read_text(&path)?;
             let count = content.matches(old).count();
             if count != 1 {
                 return Err(format!(
-                    "old_content must occur exactly once; found {count}."
+                    "Target text must occur exactly once in the file; found {count} occurrences."
                 ));
             }
             fs::write(&path, content.replacen(old, new, 1))
                 .map_err(|error| format!("Failed to edit file: {error}"))?;
+            let rel = path.strip_prefix(root).unwrap_or(&path).display();
+            let mut diff_lines = Vec::new();
+            diff_lines.push(format!("--- a/{rel}"));
+            diff_lines.push(format!("+++ b/{rel}"));
+            for line in old.lines() {
+                diff_lines.push(format!("- {line}"));
+            }
+            for line in new.lines() {
+                diff_lines.push(format!("+ {line}"));
+            }
             Ok(format!(
-                "Edited {}",
-                path.strip_prefix(root).unwrap_or(&path).display()
+                "Edited {rel}\n\n```diff\n{}\n```",
+                diff_lines.join("\n")
             ))
         }
         "delete_file" => {
