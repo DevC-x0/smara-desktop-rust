@@ -952,7 +952,7 @@ pub async fn stream_desktop_chat(
 
             let tools_schema = export_openai_tools_schema();
             let mut final_content = String::new();
-            let max_turns = 8;
+            let max_turns = 25;
 
             for _turn in 0..max_turns {
                 if stream_state.is_cancelled(&request_id_for_cancel).unwrap_or(true) {
@@ -1011,7 +1011,7 @@ pub async fn stream_desktop_chat(
                     }
                     dynamic_messages.push(json!({
                         "role": "assistant",
-                        "content": stream_out.content,
+                        "content": if stream_out.content.is_empty() { Value::Null } else { Value::String(stream_out.content) },
                         "tool_calls": assistant_tool_calls_json,
                     }));
 
@@ -1089,7 +1089,50 @@ pub async fn stream_desktop_chat(
             }
 
             if final_content.trim().is_empty() {
-                final_content = "Selesai memproses aksi dan tools.".to_string();
+                emit_chat_stream_event(
+                    &event_app_for_done,
+                    &request_id_for_done,
+                    "thinking",
+                    "Mensintesis seluruh temuan investigasi dan merumuskan analisis lengkap...",
+                );
+                let event_app_for_thinking = event_app_for_delta.clone();
+                let req_id_for_thinking = request_id_for_cancel.clone();
+                let event_app_for_delta_inner = event_app_for_delta.clone();
+                let req_id_for_delta_inner = request_id_for_cancel.clone();
+                let state_for_cancel = stream_state.clone();
+                let req_id_for_cancel_inner = request_id_for_cancel.clone();
+
+                let stream_out = request_streaming_completion(
+                    &config,
+                    &dynamic_messages,
+                    &[],
+                    move |reasoning| {
+                        let _ = event_app_for_thinking.emit(
+                            "desktop-chat-stream",
+                            DesktopChatStreamEvent {
+                                request_id: req_id_for_thinking.clone(),
+                                kind: "thinking_delta".to_string(),
+                                delta: reasoning.to_string(),
+                            },
+                        );
+                    },
+                    move |delta| {
+                        let _ = event_app_for_delta_inner.emit(
+                            "desktop-chat-stream",
+                            DesktopChatStreamEvent {
+                                request_id: req_id_for_delta_inner.clone(),
+                                kind: "delta".to_string(),
+                                delta: delta.to_string(),
+                            },
+                        );
+                    },
+                    move || state_for_cancel.is_cancelled(&req_id_for_cancel_inner).unwrap_or(true),
+                )?;
+                final_content = stream_out.content;
+            }
+
+            if final_content.trim().is_empty() {
+                final_content = "Selesai memproses aksi dan investigasi workspace.".to_string();
             }
             Ok(final_content)
         })?;
