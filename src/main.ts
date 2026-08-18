@@ -476,17 +476,17 @@ function forceVisibleDesktopContent() {
     launcher.style.minHeight = '0';
   }
   if (pages) {
-    pages.style.display = 'block';
-    pages.style.flex = '1 1 auto';
-    pages.style.minHeight = '0';
-    pages.style.overflow = 'auto';
+    pages.style.removeProperty('display');
+    pages.style.removeProperty('overflow');
+    pages.style.removeProperty('flex');
+    pages.style.removeProperty('min-height');
   }
   if (active) {
     active.classList.add('page-active');
     active.removeAttribute('hidden');
-    active.style.display = 'block';
-    active.style.visibility = 'visible';
-    active.style.opacity = '1';
+    active.style.removeProperty('display');
+    active.style.removeProperty('visibility');
+    active.style.removeProperty('opacity');
   }
 }
 
