@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Manager};
 
@@ -19,6 +20,35 @@ pub struct DesktopWorkspace {
 pub struct DesktopWorkspaceState {
     pub active: String,
     pub workspaces: Vec<DesktopWorkspace>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct WorkspaceFileNode {
+    pub name: String,
+    pub path: String,
+    pub rel_path: String,
+    pub is_dir: bool,
+    pub size: u64,
+    pub extension: Option<String>,
+    pub children: Option<Vec<WorkspaceFileNode>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct WorkspaceGitStatus {
+    pub is_git: bool,
+    pub branch: Option<String>,
+    pub staged_count: usize,
+    pub modified_count: usize,
+    pub untracked_count: usize,
+    pub summary: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct WorkspaceFileContent {
+    pub path: String,
+    pub content: String,
+    pub size: u64,
+    pub is_binary: bool,
 }
 
 impl Default for DesktopWorkspaceState {
@@ -135,7 +165,7 @@ fn workspaces_path(app: &AppHandle) -> Result<PathBuf, String> {
     Ok(dir.join(WORKSPACES_FILE))
 }
 
-fn load_workspace_state(app: &AppHandle) -> Result<DesktopWorkspaceState, String> {
+pub(crate) fn load_workspace_state(app: &AppHandle) -> Result<DesktopWorkspaceState, String> {
     let path = workspaces_path(app)?;
     if !path.exists() {
         return Ok(DesktopWorkspaceState::default());
@@ -155,6 +185,178 @@ fn save_workspace_state(
         .map_err(|error| format!("Failed to serialize Desktop workspaces: {error}"))?;
     fs::write(path, raw).map_err(|error| format!("Failed to save Desktop workspaces: {error}"))?;
     Ok(state.clone())
+}
+
+pub fn resolve_workspace_root(app: &AppHandle, workspace_name: Option<&str>) -> PathBuf {
+    if let Ok(state) = load_workspace_state(app) {
+        let target_name = workspace_name.unwrap_or(&state.active);
+        if let Some(ws) = state.workspaces.iter().find(|w| w.name.eq_ignore_ascii_case(target_name)) {
+            if let Some(ref p) = ws.path {
+                let pb = PathBuf::from(p);
+                if pb.exists() {
+                    return pb;
+                }
+            }
+        }
+    }
+    std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
+}
+
+pub fn build_file_tree(dir: &Path, root: &Path, current_depth: usize, max_depth: usize) -> Vec<WorkspaceFileNode> {
+    if current_depth > max_depth {
+        return Vec::new();
+    }
+    let mut nodes = Vec::new();
+    let entries = match fs::read_dir(dir) {
+        Ok(entries) => entries,
+        Err(_) => return Vec::new(),
+    };
+
+    const IGNORED_NAMES: &[&str] = &[
+        ".git", "node_modules", "target", "dist", "build", ".system_generated", ".cache", ".gemini", ".vscode", ".idea"
+    ];
+
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let name = match entry.file_name().into_string() {
+            Ok(n) => n,
+            Err(_) => continue,
+        };
+
+        if IGNORED_NAMES.contains(&name.as_str()) {
+            continue;
+        }
+
+        let rel_path = path.strip_prefix(root).unwrap_or(&path).to_string_lossy().to_string();
+        let is_dir = path.is_dir();
+        let metadata = entry.metadata().ok();
+        let size = metadata.map(|m| m.len()).unwrap_or(0);
+        let extension = if is_dir {
+            None
+        } else {
+            path.extension().and_then(|ext| ext.to_str()).map(|s| s.to_ascii_lowercase())
+        };
+
+        let children = if is_dir && current_depth < max_depth {
+            Some(build_file_tree(&path, root, current_depth + 1, max_depth))
+        } else if is_dir {
+            Some(Vec::new())
+        } else {
+            None
+        };
+
+        nodes.push(WorkspaceFileNode {
+            name,
+            path: path.to_string_lossy().to_string(),
+            rel_path,
+            is_dir,
+            size,
+            extension,
+            children,
+        });
+    }
+
+    nodes.sort_by(|a, b| {
+        match (a.is_dir, b.is_dir) {
+            (true, false) => std::cmp::Ordering::Less,
+            (false, true) => std::cmp::Ordering::Greater,
+            _ => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
+        }
+    });
+
+    nodes
+}
+
+pub fn get_git_status_for_dir(dir: &Path) -> WorkspaceGitStatus {
+    let output = Command::new("git")
+        .arg("status")
+        .arg("--porcelain=v1")
+        .arg("-b")
+        .current_dir(dir)
+        .output();
+
+    let output = match output {
+        Ok(out) if out.status.success() => String::from_utf8_lossy(&out.stdout).to_string(),
+        _ => {
+            let git_dir = dir.join(".git");
+            if git_dir.exists() {
+                let head_file = git_dir.join("HEAD");
+                let branch = if let Ok(head_content) = fs::read_to_string(head_file) {
+                    if let Some(ref_line) = head_content.strip_prefix("ref: refs/heads/") {
+                        Some(ref_line.trim().to_string())
+                    } else {
+                        Some("HEAD".to_string())
+                    }
+                } else {
+                    None
+                };
+                return WorkspaceGitStatus {
+                    is_git: true,
+                    branch,
+                    staged_count: 0,
+                    modified_count: 0,
+                    untracked_count: 0,
+                    summary: "Git aktif".to_string(),
+                };
+            }
+            return WorkspaceGitStatus {
+                is_git: false,
+                branch: None,
+                staged_count: 0,
+                modified_count: 0,
+                untracked_count: 0,
+                summary: "Bukan Git repo".to_string(),
+            };
+        }
+    };
+
+    let mut branch = None;
+    let mut staged_count = 0;
+    let mut modified_count = 0;
+    let mut untracked_count = 0;
+
+    for line in output.lines() {
+        if line.starts_with("##") {
+            let branch_part = line.trim_start_matches('#').trim();
+            if let Some(idx) = branch_part.find("...") {
+                branch = Some(branch_part[..idx].to_string());
+            } else {
+                branch = Some(branch_part.to_string());
+            }
+        } else if line.len() >= 2 {
+            let chars: Vec<char> = line.chars().collect();
+            let staged_char = chars.first().copied().unwrap_or(' ');
+            let unstaged_char = chars.get(1).copied().unwrap_or(' ');
+
+            if staged_char == '?' && unstaged_char == '?' {
+                untracked_count += 1;
+            } else {
+                if staged_char != ' ' && staged_char != '?' {
+                    staged_count += 1;
+                }
+                if unstaged_char != ' ' && unstaged_char != '?' {
+                    modified_count += 1;
+                }
+            }
+        }
+    }
+
+    let summary = format!(
+        "Branch: {} | +{} ~{} ?{}",
+        branch.as_deref().unwrap_or("HEAD"),
+        staged_count,
+        modified_count,
+        untracked_count
+    );
+
+    WorkspaceGitStatus {
+        is_git: true,
+        branch,
+        staged_count,
+        modified_count,
+        untracked_count,
+        summary,
+    }
 }
 
 #[tauri::command]
@@ -193,9 +395,96 @@ pub fn delete_desktop_workspace(
     save_workspace_state(&app, &state)
 }
 
+#[tauri::command]
+pub fn get_workspace_file_tree(
+    app: AppHandle,
+    workspace: Option<String>,
+    max_depth: Option<usize>,
+) -> Result<Vec<WorkspaceFileNode>, String> {
+    let root = resolve_workspace_root(&app, workspace.as_deref());
+    let depth = max_depth.unwrap_or(3);
+    Ok(build_file_tree(&root, &root, 0, depth))
+}
+
+#[tauri::command]
+pub fn get_workspace_git_status(
+    app: AppHandle,
+    workspace: Option<String>,
+) -> Result<WorkspaceGitStatus, String> {
+    let root = resolve_workspace_root(&app, workspace.as_deref());
+    Ok(get_git_status_for_dir(&root))
+}
+
+#[tauri::command]
+pub fn read_workspace_file(
+    app: AppHandle,
+    path: String,
+) -> Result<WorkspaceFileContent, String> {
+    let root = resolve_workspace_root(&app, None);
+    let target_path = if Path::new(&path).is_absolute() {
+        PathBuf::from(&path)
+    } else {
+        root.join(&path)
+    };
+
+    if !target_path.exists() {
+        return Err(format!("File not found: {path}"));
+    }
+
+    let metadata = fs::metadata(&target_path)
+        .map_err(|e| format!("Failed to read metadata for {path}: {e}"))?;
+    let size = metadata.len();
+
+    // Read up to 2MB
+    if size > 2 * 1024 * 1024 {
+        return Err("File is too large to preview (> 2MB).".to_string());
+    }
+
+    let bytes = fs::read(&target_path)
+        .map_err(|e| format!("Failed to read file {path}: {e}"))?;
+
+    let is_binary = bytes.iter().take(1024).any(|&b| b == 0);
+    let content = if is_binary {
+        "[Binary file preview not supported]".to_string()
+    } else {
+        String::from_utf8_lossy(&bytes).to_string()
+    };
+
+    Ok(WorkspaceFileContent {
+        path: target_path.to_string_lossy().to_string(),
+        content,
+        size,
+        is_binary,
+    })
+}
+
+#[tauri::command]
+pub fn apply_code_to_file(
+    app: AppHandle,
+    path: String,
+    content: String,
+) -> Result<bool, String> {
+    let root = resolve_workspace_root(&app, None);
+    let target_path = if Path::new(&path).is_absolute() {
+        PathBuf::from(&path)
+    } else {
+        root.join(&path)
+    };
+
+    if let Some(parent) = target_path.parent() {
+        fs::create_dir_all(parent)
+            .map_err(|e| format!("Failed to create parent directories: {e}"))?;
+    }
+
+    fs::write(&target_path, content)
+        .map_err(|e| format!("Failed to write to file {}: {e}", target_path.display()))?;
+
+    Ok(true)
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{create_workspace, delete_workspace, switch_workspace, DesktopWorkspaceState};
+    use super::*;
 
     #[test]
     fn default_state_is_immediately_usable() {
@@ -241,5 +530,33 @@ mod tests {
         assert_eq!(state.workspaces.len(), 1);
 
         assert!(delete_workspace(&mut state, "default").is_err());
+    }
+
+    #[test]
+    fn file_tree_builder_respects_depth_and_ignores() {
+        let temp_dir = std::env::temp_dir().join("smara_test_tree");
+        let _ = fs::remove_dir_all(&temp_dir);
+        fs::create_dir_all(temp_dir.join("subdir/nested")).unwrap();
+        fs::create_dir_all(temp_dir.join(".git")).unwrap();
+        fs::write(temp_dir.join("hello.rs"), "fn main() {}").unwrap();
+        fs::write(temp_dir.join("subdir/sub.txt"), "test").unwrap();
+
+        let tree = build_file_tree(&temp_dir, &temp_dir, 0, 2);
+        assert!(!tree.iter().any(|node| node.name == ".git"));
+        assert!(tree.iter().any(|node| node.name == "hello.rs" && !node.is_dir));
+        assert!(tree.iter().any(|node| node.name == "subdir" && node.is_dir));
+
+        let _ = fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn git_status_check_handles_non_git() {
+        let temp_dir = std::env::temp_dir().join("smara_test_nongit");
+        let _ = fs::remove_dir_all(&temp_dir);
+        fs::create_dir_all(&temp_dir).unwrap();
+
+        let status = get_git_status_for_dir(&temp_dir);
+        assert!(!status.is_git);
+        let _ = fs::remove_dir_all(&temp_dir);
     }
 }

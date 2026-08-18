@@ -38,7 +38,8 @@ use memory_service::{
     search_desktop_memories_ranked, update_desktop_memory,
 };
 use provider_service::{
-    check_desktop_provider_health, get_desktop_provider_config, save_desktop_provider_config,
+    check_desktop_provider_health, detect_local_llm_models, get_desktop_provider_config,
+    save_desktop_provider_config, switch_desktop_provider_model,
 };
 use skill_service::{
     delete_desktop_skill, list_desktop_skills, preview_desktop_skill, run_desktop_skill,
@@ -49,8 +50,9 @@ use workflow_service::{
     run_desktop_workflow, save_desktop_workflow,
 };
 use workspace_service::{
-    create_desktop_workspace, delete_desktop_workspace, get_desktop_workspaces,
-    switch_desktop_workspace,
+    apply_code_to_file, create_desktop_workspace, delete_desktop_workspace,
+    get_desktop_workspaces, get_workspace_file_tree, get_workspace_git_status,
+    read_workspace_file, switch_desktop_workspace,
 };
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -103,9 +105,15 @@ pub fn run() {
             create_desktop_workspace,
             switch_desktop_workspace,
             delete_desktop_workspace,
+            get_workspace_file_tree,
+            get_workspace_git_status,
+            read_workspace_file,
+            apply_code_to_file,
             get_desktop_provider_config,
             save_desktop_provider_config,
             check_desktop_provider_health,
+            detect_local_llm_models,
+            switch_desktop_provider_model,
             get_desktop_settings,
             save_desktop_settings,
             export_settings_json,

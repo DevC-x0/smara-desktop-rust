@@ -2522,3 +2522,428 @@ svg[aria-roledescription="error"],
   max-width: 100%;
   height: auto;
 }
+
+/* ==========================================================================
+   Workspace Files Tab & File Tree Explorer
+   ========================================================================== */
+
+.sidebar-view-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 4px 6px;
+  background: rgba(0, 0, 0, 0.35);
+  border-radius: 6px;
+  margin-bottom: 8px;
+}
+
+.sidebar-tab-btn {
+  flex: 1;
+  padding: 4px 0;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  text-align: center;
+  background: transparent;
+  border: none;
+  color: #64748B;
+  cursor: pointer;
+  transition: all 120ms ease;
+}
+
+.sidebar-tab-btn:hover {
+  color: #CBD5E1;
+}
+
+.sidebar-tab-btn.active {
+  background: rgba(190, 242, 100, 0.12);
+  color: #BEF264;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+.sidebar-git-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  margin: 0 0 6px 0;
+  background: rgba(56, 189, 248, 0.05);
+  border: 1px solid rgba(56, 189, 248, 0.15);
+  border-radius: 5px;
+  font-size: 10.5px;
+  font-family: var(--font-mono);
+}
+
+.git-branch-name {
+  color: #38BDF8;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.git-stats-pill {
+  margin-left: auto;
+  color: #94A3B8;
+  font-size: 10px;
+}
+
+.workspace-git-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 6px;
+  background: rgba(56, 189, 248, 0.1);
+  border: 1px solid rgba(56, 189, 248, 0.2);
+  border-radius: 4px;
+  color: #38BDF8;
+  font-size: 10px;
+  font-family: var(--font-mono);
+}
+
+/* File Tree Nodes */
+.file-tree-node {
+  display: flex;
+  flex-direction: column;
+}
+
+.file-tree-row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 6px;
+  border-radius: 4px;
+  font-size: 11.5px;
+  font-family: var(--font-mono);
+  color: #94A3B8;
+  cursor: pointer;
+  transition: all 100ms ease;
+  user-select: none;
+}
+
+.file-tree-row:hover {
+  background: rgba(255, 255, 255, 0.04);
+  color: #E2E8F0;
+}
+
+.file-tree-icon {
+  font-size: 11px;
+  width: 14px;
+  text-align: center;
+}
+
+.file-tree-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
+
+.file-tree-size {
+  font-size: 9.5px;
+  color: #475569;
+  margin-left: auto;
+}
+
+.file-tree-children {
+  margin-left: 8px;
+  padding-left: 8px;
+  border-left: 1px solid rgba(255, 255, 255, 0.06);
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.file-tree-children.collapsed {
+  display: none;
+}
+
+/* ==========================================================================
+   Quick Model Switcher Dropdown & Token Gauge
+   ========================================================================== */
+
+.model-switcher-dropdown {
+  position: relative;
+}
+
+.model-switcher-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 6px;
+  color: #E2E8F0;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 140ms ease;
+}
+
+.model-switcher-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(190, 242, 100, 0.25);
+}
+
+.model-switcher-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  width: 250px;
+  background: #0A0F0A;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.6);
+  z-index: 100;
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.model-menu-section {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.model-menu-label {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #64748B;
+  padding: 4px 8px 2px 8px;
+}
+
+.model-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 8px 2px 8px;
+}
+
+.btn-detect-local {
+  background: rgba(190, 242, 100, 0.1);
+  border: 1px solid rgba(190, 242, 100, 0.2);
+  border-radius: 3px;
+  color: #BEF264;
+  font-size: 9.5px;
+  font-weight: 600;
+  padding: 1px 6px;
+  cursor: pointer;
+  transition: all 120ms ease;
+}
+
+.btn-detect-local:hover {
+  background: rgba(190, 242, 100, 0.2);
+}
+
+.model-option-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  background: transparent;
+  border: none;
+  border-radius: 5px;
+  color: #CBD5E1;
+  font-size: 11.5px;
+  text-align: left;
+  cursor: pointer;
+  transition: all 100ms ease;
+  width: 100%;
+}
+
+.model-option-btn:hover {
+  background: rgba(190, 242, 100, 0.1);
+  color: #BEF264;
+}
+
+.model-option-btn.active {
+  background: rgba(190, 242, 100, 0.15);
+  color: #BEF264;
+  font-weight: 600;
+}
+
+.no-local-models-hint {
+  font-size: 10.5px;
+  color: #475569;
+  padding: 4px 8px;
+  font-style: italic;
+  margin: 0;
+}
+
+.chat-token-gauge {
+  font-size: 11px;
+  font-family: var(--font-mono);
+  color: #94A3B8;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 4px 8px;
+  border-radius: 5px;
+}
+
+/* ==========================================================================
+   At-Mention Popover in Composer
+   ========================================================================== */
+
+.at-mention-popover {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  right: 0;
+  margin-bottom: 8px;
+  background: #080D08;
+  border: 1px solid rgba(190, 242, 100, 0.3);
+  border-radius: 8px;
+  box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.5);
+  z-index: 50;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.at-mention-popover[hidden] {
+  display: none !important;
+}
+
+.at-mention-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 12px;
+  background: rgba(255, 255, 255, 0.03);
+  border-bottom: 1px solid var(--border);
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.at-hint {
+  font-size: 10px;
+  color: #64748B;
+}
+
+.at-mention-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.at-mention-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-family: var(--font-mono);
+  color: #CBD5E1;
+  cursor: pointer;
+  transition: all 80ms ease;
+}
+
+.at-mention-item:hover,
+.at-mention-item.selected {
+  background: rgba(190, 242, 100, 0.12);
+  color: #BEF264;
+}
+
+/* ==========================================================================
+   Code Block Actions & Prompt Edit
+   ========================================================================== */
+
+.code-apply-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  background: rgba(190, 242, 100, 0.08);
+  border: 1px solid rgba(190, 242, 100, 0.22);
+  border-radius: 3px;
+  color: #BEF264;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 7px;
+  cursor: pointer;
+  transition: all 120ms ease;
+}
+
+.code-apply-btn:hover {
+  background: rgba(190, 242, 100, 0.2);
+}
+
+.code-apply-btn.applied {
+  background: #22C55E;
+  color: #000;
+  border-color: #22C55E;
+}
+
+.chat-message-user {
+  position: relative;
+}
+
+.user-msg-edit-btn {
+  position: absolute;
+  top: 4px;
+  left: -32px;
+  opacity: 0;
+  transition: opacity 120ms;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 2px 5px;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 11px;
+}
+
+.chat-message-user:hover .user-msg-edit-btn {
+  opacity: 1;
+}
+
+.user-msg-edit-btn:hover {
+  background: rgba(190, 242, 100, 0.15);
+  color: #BEF264;
+}
+
+/* ==========================================================================
+   File Preview Modal
+   ========================================================================== */
+
+.modal-dialog-lg {
+  max-width: 780px !important;
+  width: 90% !important;
+}
+
+.modal-title-with-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.modal-file-path-badge {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: #38BDF8;
+  background: rgba(56, 189, 248, 0.08);
+  padding: 2px 6px;
+  border-radius: 4px;
+  border: 1px solid rgba(56, 189, 248, 0.15);
+}
+
+.file-preview-body-container {
+  max-height: 480px;
+  overflow-y: auto;
+  border-radius: 6px;
+  background: #040604;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.file-preview-pre {
+  margin: 0;
+  padding: 14px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.5;
+  color: #E2E8F0;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+

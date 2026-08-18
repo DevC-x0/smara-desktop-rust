@@ -420,6 +420,92 @@ async function installMockTauri(
           window.__SMARA_MEDIA__ = window.__SMARA_MEDIA__.filter((asset) => asset.id !== args.id);
           return true;
         }
+        if (command === 'get_workspace_file_tree') {
+          return [
+            {
+              name: 'src',
+              path: '/mock/workspace/src',
+              rel_path: 'src',
+              is_dir: true,
+              size: 0,
+              extension: null,
+              children: [
+                {
+                  name: 'main.rs',
+                  path: '/mock/workspace/src/main.rs',
+                  rel_path: 'src/main.rs',
+                  is_dir: false,
+                  size: 1024,
+                  extension: 'rs',
+                  children: null,
+                },
+                {
+                  name: 'styles.css',
+                  path: '/mock/workspace/src/styles.css',
+                  rel_path: 'src/styles.css',
+                  is_dir: false,
+                  size: 512,
+                  extension: 'css',
+                  children: null,
+                },
+              ],
+            },
+            {
+              name: 'index.html',
+              path: '/mock/workspace/index.html',
+              rel_path: 'index.html',
+              is_dir: false,
+              size: 2048,
+              extension: 'html',
+              children: null,
+            },
+          ];
+        }
+        if (command === 'get_workspace_git_status') {
+          return {
+            is_git: true,
+            branch: 'main',
+            staged_count: 1,
+            modified_count: 2,
+            untracked_count: 0,
+            summary: '🌿 main (+1 staged, ~2 modified)',
+          };
+        }
+        if (command === 'read_workspace_file') {
+          return {
+            path: args.path,
+            content: '// Mock file content\nfn main() {\n  println!("Hello Smara");\n}\n',
+            size: 48,
+            is_binary: false,
+          };
+        }
+        if (command === 'apply_code_to_file') {
+          return true;
+        }
+        if (command === 'detect_local_llm_models') {
+          return [
+            {
+              provider: 'ollama',
+              model: 'llama3:latest',
+              endpoint: 'http://localhost:11434/v1',
+              details: '4.7 GB',
+            },
+            {
+              provider: 'lmstudio',
+              model: 'qwen2.5-coder-7b',
+              endpoint: 'http://localhost:1234/v1',
+              details: 'local-server',
+            },
+          ];
+        }
+        if (command === 'switch_desktop_provider_model') {
+          window.__SMARA_PROVIDER_CONFIG__ = {
+            provider: args.provider,
+            model: args.model,
+            endpoint: args.endpoint || 'http://localhost:11434/v1',
+          };
+          return window.__SMARA_PROVIDER_CONFIG__;
+        }
         throw new Error(`Unexpected standalone Desktop command: ${command}`);
       },
     };
@@ -463,7 +549,7 @@ test('streams chat through Rust-native Desktop events', async ({ page }) => {
   await page.locator('#chat-input').fill('hello native chat');
   await page.locator('#send-chat-button').click();
 
-  await expect(page.locator('.chat-message-user')).toHaveText('hello native chat');
+  await expect(page.locator('.chat-message-user .chat-message-body')).toHaveText('hello native chat');
   await expect(page.locator('.chat-message-assistant')).toHaveText('native streaming reply');
   await expect(page.locator('#chat-status')).toContainText('Streaming selesai');
   await expect(page.locator('.chat-process')).toContainText('Mock thinking');
@@ -911,6 +997,118 @@ test('persists agent execution trajectory in chat session and renders on session
   // Verify agent tree is still fully present and rendered from message.processes
   await expect(page.locator('.agent-tree-container')).toBeVisible();
   await expect(page.locator('.agent-tree-root')).toContainText('Worked for');
+});
+
+test('displays workspace file explorer and git status in sidebar with file preview', async ({ page }) => {
+  await installMockTauri(page);
+  await page.goto('/');
+
+  await openDesktopPage(page, 'chat');
+
+  // Verify Git status pill in header
+  const gitPill = page.locator('#active-workspace-git-pill');
+  await expect(gitPill).toBeVisible();
+  await expect(gitPill).toContainText('main');
+
+  // Switch sidebar to "Files" tab
+  await page.locator('#sidebar-tab-explorer').click();
+  await expect(page.locator('#sidebar-file-explorer-list')).toBeVisible();
+  await expect(page.locator('#sidebar-git-status-bar')).toBeVisible();
+  await expect(page.locator('#sidebar-git-branch')).toHaveText('main');
+
+  // Verify file tree nodes
+  const srcDir = page.locator('.file-tree-row', { hasText: 'src' });
+  await expect(srcDir).toBeVisible();
+  const indexHtml = page.locator('.file-tree-row', { hasText: 'index.html' });
+  await expect(indexHtml).toBeVisible();
+
+  // Click on index.html to open preview modal
+  await indexHtml.click();
+  await expect(page.locator('#file-preview-modal')).toBeVisible();
+  await expect(page.locator('#file-preview-content')).toContainText('Hello Smara');
+
+  // Click "Lampirkan ke Chat"
+  await page.locator('#file-preview-attach-btn').click();
+  await expect(page.locator('#file-preview-modal')).toBeHidden();
+
+  // Verify file is attached in chat composer
+  await expect(page.locator('.chat-attachment')).toContainText('index.html');
+});
+
+test('quick model switcher switches models and detects local LLMs', async ({ page }) => {
+  await installMockTauri(page);
+  await page.goto('/');
+
+  await openDesktopPage(page, 'chat');
+
+  // Click model switcher dropdown
+  await page.locator('#model-switcher-btn').click();
+  const menu = page.locator('#model-switcher-menu');
+  await expect(menu).toBeVisible();
+
+  // Switch to Claude 3.7 Sonnet
+  await menu.locator('.model-option-btn', { hasText: 'Claude 3.7 Sonnet' }).click();
+  await expect(menu).toBeHidden();
+  await expect(page.locator('#active-model-name')).toHaveText('claude-3-7-sonnet');
+
+  // Open dropdown again and click "Deteksi"
+  await page.locator('#model-switcher-btn').click();
+  await expect(menu).toBeVisible();
+  await page.locator('#detect-local-models-btn').click();
+
+  // Verify detected local models appear
+  const localModel = menu.locator('.model-option-btn', { hasText: 'llama3:latest' });
+  await expect(localModel).toBeVisible();
+
+  // Click the detected local model
+  await localModel.click();
+  await expect(menu).toBeHidden();
+  await expect(page.locator('#active-model-name')).toHaveText('llama3:latest');
+});
+
+test('at-mention file autocomplete inserts file path into composer and attaches file', async ({ page }) => {
+  await installMockTauri(page);
+  await page.goto('/');
+
+  await openDesktopPage(page, 'chat');
+
+  const chatInput = page.locator('#chat-input');
+  await chatInput.fill('tolong periksa @main');
+
+  // Popover should appear with matching suggestions
+  const popover = page.locator('#at-mention-popover');
+  await expect(popover).toBeVisible();
+  const suggestion = page.locator('.at-mention-item', { hasText: 'src/main.rs' });
+  await expect(suggestion).toBeVisible();
+
+  // Press Enter on the input to select the highlighted suggestion
+  await chatInput.press('Enter');
+  await expect(popover).toBeHidden();
+  await expect(chatInput).toHaveValue('tolong periksa @src/main.rs ');
+
+  // File should also be added to pending attachments
+  await expect(page.locator('.chat-attachment')).toContainText('main.rs');
+});
+
+test('applies code from assistant code block and provides prompt edit button', async ({ page }) => {
+  await installMockTauri(page);
+  await page.goto('/');
+
+  await openDesktopPage(page, 'chat');
+
+  // Send message
+  await page.locator('#chat-input').fill('buat file config');
+  await page.locator('#send-chat-button').click();
+  await expect(page.locator('.chat-message-assistant')).toBeVisible();
+
+  // Hover over user message to see prompt edit button
+  const userMsg = page.locator('.chat-message-user');
+  const editBtn = userMsg.locator('.user-msg-edit-btn');
+  await expect(editBtn).toBeVisible();
+
+  // Click edit button
+  await editBtn.click();
+  await expect(page.locator('#chat-input')).toHaveValue('buat file config');
 });
 
 

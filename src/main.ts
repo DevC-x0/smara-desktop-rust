@@ -85,6 +85,39 @@ type DesktopProviderConfig = {
   endpoint: string;
 };
 
+type DetectedLocalModel = {
+  provider: string;
+  model: string;
+  endpoint: string;
+  details?: string | null;
+};
+
+type WorkspaceFileNode = {
+  name: string;
+  path: string;
+  rel_path: string;
+  is_dir: boolean;
+  size: number;
+  extension?: string | null;
+  children?: WorkspaceFileNode[] | null;
+};
+
+type WorkspaceGitStatus = {
+  is_git: boolean;
+  branch?: string | null;
+  staged_count: number;
+  modified_count: number;
+  untracked_count: number;
+  summary: string;
+};
+
+type WorkspaceFileContent = {
+  path: string;
+  content: string;
+  size: number;
+  is_binary: boolean;
+};
+
 type DesktopChatMessage = {
   id: string;
   role: string;
@@ -437,10 +470,49 @@ const closeMoveModalButton = document.querySelector<HTMLButtonElement>('#close-m
 const activeWorkspaceBadge = document.querySelector<HTMLElement>('#active-workspace-badge');
 const activeWorkspaceNameEl = document.querySelector<HTMLElement>('#active-workspace-name');
 const activeWorkspaceMemoryPill = document.querySelector<HTMLElement>('#active-workspace-memory-pill');
+const activeWorkspaceGitPill = document.querySelector<HTMLElement>('#active-workspace-git-pill');
+
+const sidebarTabSessions = document.querySelector<HTMLButtonElement>('#sidebar-tab-sessions');
+const sidebarTabExplorer = document.querySelector<HTMLButtonElement>('#sidebar-tab-explorer');
+const sidebarFileExplorerList = document.querySelector<HTMLElement>('#sidebar-file-explorer-list');
+const sidebarGitStatusBar = document.querySelector<HTMLElement>('#sidebar-git-status-bar');
+const sidebarGitBranch = document.querySelector<HTMLElement>('#sidebar-git-branch');
+const sidebarGitStats = document.querySelector<HTMLElement>('#sidebar-git-stats');
+const sidebarRefreshFilesButton = document.querySelector<HTMLButtonElement>('#sidebar-refresh-files-button');
+const sidebarPanelTitleText = document.querySelector<HTMLElement>('#sidebar-panel-title-text');
+
+const modelSwitcherDropdown = document.querySelector<HTMLElement>('#model-switcher-dropdown');
+const modelSwitcherBtn = document.querySelector<HTMLButtonElement>('#model-switcher-btn');
+const modelSwitcherMenu = document.querySelector<HTMLElement>('#model-switcher-menu');
+const activeModelNameEl = document.querySelector<HTMLElement>('#active-model-name');
+const detectLocalModelsBtn = document.querySelector<HTMLButtonElement>('#detect-local-models-btn');
+const detectedLocalModelsList = document.querySelector<HTMLElement>('#detected-local-models-list');
+const chatTokenGauge = document.querySelector<HTMLElement>('#chat-token-gauge');
+
+const atMentionPopover = document.querySelector<HTMLElement>('#at-mention-popover');
+const atMentionList = document.querySelector<HTMLElement>('#at-mention-list');
+
+const filePreviewModal = document.querySelector<HTMLElement>('#file-preview-modal');
+const filePreviewTitle = document.querySelector<HTMLElement>('#file-preview-title');
+const filePreviewPath = document.querySelector<HTMLElement>('#file-preview-path');
+const filePreviewContent = document.querySelector<HTMLElement>('#file-preview-content');
+const filePreviewAttachBtn = document.querySelector<HTMLButtonElement>('#file-preview-attach-btn');
+const filePreviewCopyBtn = document.querySelector<HTMLButtonElement>('#file-preview-copy-btn');
+const closeFilePreviewModalButton = document.querySelector<HTMLButtonElement>('#close-file-preview-modal-button');
+const closeFilePreviewButton = document.querySelector<HTMLButtonElement>('#close-file-preview-button');
+
+let activeSidebarView: 'sessions' | 'explorer' = 'sessions';
+let workspaceFileTree: WorkspaceFileNode[] = [];
+let workspaceGitStatus: WorkspaceGitStatus | null = null;
+let currentProviderConfig: DesktopProviderConfig | null = null;
+let detectedLocalModels: DetectedLocalModel[] = [];
+let previewingFileNode: WorkspaceFileNode | null = null;
+let atMentionSelectedIndex = 0;
 
 let workspacesList: DesktopWorkspace[] = [];
 let activeWorkspaceName = 'default';
 const collapsedWorkspaces = new Set<string>();
+const collapsedTreeDirs = new Set<string>();
 let pendingMoveSessionId: string | null = null;
 
 let chatSessions: DesktopChatSession[] = [];
@@ -774,8 +846,479 @@ async function loadWorkspaces() {
     }
     updateChatHeaderWorkspaceInfo();
     renderSidebarChatSessions();
+    void loadWorkspaceFiles();
+    void loadWorkspaceGitStatus();
   } catch (error) {
     console.error('Failed to load workspaces:', error);
+  }
+}
+
+function initSidebarViewTabs() {
+  sidebarTabSessions?.addEventListener('click', () => {
+    activeSidebarView = 'sessions';
+    sidebarTabSessions.classList.add('active');
+    sidebarTabExplorer?.classList.remove('active');
+    if (sidebarPanelTitleText) sidebarPanelTitleText.textContent = 'Workspaces & Sessions';
+    if (sidebarChatSessionList) sidebarChatSessionList.hidden = false;
+    if (sidebarFileExplorerList) sidebarFileExplorerList.hidden = true;
+    if (sidebarRefreshFilesButton) sidebarRefreshFilesButton.hidden = true;
+  });
+
+  sidebarTabExplorer?.addEventListener('click', () => {
+    activeSidebarView = 'explorer';
+    sidebarTabExplorer.classList.add('active');
+    sidebarTabSessions?.classList.remove('active');
+    if (sidebarPanelTitleText) sidebarPanelTitleText.textContent = 'Workspace Files';
+    if (sidebarChatSessionList) sidebarChatSessionList.hidden = true;
+    if (sidebarFileExplorerList) sidebarFileExplorerList.hidden = false;
+    if (sidebarRefreshFilesButton) sidebarRefreshFilesButton.hidden = false;
+    void loadWorkspaceFiles();
+    void loadWorkspaceGitStatus();
+  });
+
+  sidebarRefreshFilesButton?.addEventListener('click', () => {
+    void loadWorkspaceFiles();
+    void loadWorkspaceGitStatus();
+  });
+}
+
+async function loadWorkspaceGitStatus() {
+  try {
+    const status = await invokeCommand<WorkspaceGitStatus>('get_workspace_git_status', {
+      workspace: activeWorkspaceName === 'default' ? null : activeWorkspaceName,
+    });
+    workspaceGitStatus = status;
+    if (sidebarGitStatusBar) {
+      sidebarGitStatusBar.hidden = !status.is_git;
+    }
+    if (sidebarGitBranch) {
+      sidebarGitBranch.textContent = status.branch || 'main';
+    }
+    if (sidebarGitStats) {
+      sidebarGitStats.textContent = `+${status.staged_count} ~${status.modified_count} ?${status.untracked_count}`;
+    }
+    if (activeWorkspaceGitPill) {
+      activeWorkspaceGitPill.hidden = !status.is_git;
+      activeWorkspaceGitPill.textContent = `🌿 ${status.branch || 'main'}`;
+      activeWorkspaceGitPill.title = status.summary;
+    }
+  } catch (error) {
+    console.error('Failed to load git status:', error);
+  }
+}
+
+async function loadWorkspaceFiles() {
+  if (!sidebarFileExplorerList) return;
+  try {
+    const nodes = await invokeCommand<WorkspaceFileNode[]>('get_workspace_file_tree', {
+      workspace: activeWorkspaceName === 'default' ? null : activeWorkspaceName,
+      maxDepth: 3,
+    });
+    workspaceFileTree = nodes;
+    renderWorkspaceFileTree();
+  } catch (error) {
+    sidebarFileExplorerList.innerHTML = `<p class="sidebar-chat-empty">Gagal memuat file: ${error instanceof Error ? error.message : String(error)}</p>`;
+  }
+}
+
+function getFileIcon(node: WorkspaceFileNode): string {
+  if (node.is_dir) return '📁';
+  const ext = node.extension?.toLowerCase() || '';
+  if (['ts', 'tsx'].includes(ext)) return '🔷';
+  if (['js', 'jsx', 'mjs'].includes(ext)) return '🟨';
+  if (['rs'].includes(ext)) return '🦀';
+  if (['json'].includes(ext)) return '📜';
+  if (['md', 'txt'].includes(ext)) return '📝';
+  if (['html', 'htm'].includes(ext)) return '🌐';
+  if (['css', 'scss', 'sass'].includes(ext)) return '🎨';
+  if (['py'].includes(ext)) return '🐍';
+  if (['go'].includes(ext)) return '🔵';
+  if (['png', 'jpg', 'jpeg', 'svg', 'webp', 'gif'].includes(ext)) return '🖼️';
+  if (['sh', 'bash', 'zsh'].includes(ext)) return '⚡';
+  return '📄';
+}
+
+function renderFileNodeElement(node: WorkspaceFileNode): HTMLElement {
+  const container = document.createElement('div');
+  container.className = 'file-tree-node';
+
+  const row = document.createElement('div');
+  row.className = 'file-tree-row';
+  row.title = node.rel_path;
+
+  const isCollapsed = collapsedTreeDirs.has(node.path);
+
+  const iconSpan = document.createElement('span');
+  iconSpan.className = 'file-tree-icon';
+  iconSpan.textContent = node.is_dir ? (isCollapsed ? '📁' : '📂') : getFileIcon(node);
+
+  const nameSpan = document.createElement('span');
+  nameSpan.className = 'file-tree-name';
+  nameSpan.textContent = node.name;
+
+  const sizeSpan = document.createElement('span');
+  sizeSpan.className = 'file-tree-size';
+  if (!node.is_dir && node.size > 0) {
+    sizeSpan.textContent = formatAttachmentBytes(node.size);
+  }
+
+  row.append(iconSpan, nameSpan, sizeSpan);
+  container.append(row);
+
+  if (node.is_dir && node.children) {
+    const childrenContainer = document.createElement('div');
+    childrenContainer.className = 'file-tree-children';
+    if (isCollapsed) {
+      childrenContainer.classList.add('collapsed');
+    }
+    for (const child of node.children) {
+      childrenContainer.append(renderFileNodeElement(child));
+    }
+    container.append(childrenContainer);
+
+    row.addEventListener('click', () => {
+      if (collapsedTreeDirs.has(node.path)) {
+        collapsedTreeDirs.delete(node.path);
+        childrenContainer.classList.remove('collapsed');
+        iconSpan.textContent = '📂';
+      } else {
+        collapsedTreeDirs.add(node.path);
+        childrenContainer.classList.add('collapsed');
+        iconSpan.textContent = '📁';
+      }
+    });
+  } else if (!node.is_dir) {
+    row.addEventListener('click', () => {
+      void openFilePreviewModal(node);
+    });
+  }
+
+  return container;
+}
+
+function renderWorkspaceFileTree() {
+  if (!sidebarFileExplorerList) return;
+  if (!workspaceFileTree.length) {
+    sidebarFileExplorerList.innerHTML = '<p class="sidebar-chat-empty">Workspace kosong atau tidak ada file.</p>';
+    return;
+  }
+  sidebarFileExplorerList.innerHTML = '';
+  for (const node of workspaceFileTree) {
+    sidebarFileExplorerList.append(renderFileNodeElement(node));
+  }
+}
+
+async function openFilePreviewModal(node: WorkspaceFileNode) {
+  if (!filePreviewModal || !filePreviewContent || !filePreviewTitle || !filePreviewPath) return;
+  previewingFileNode = node;
+  filePreviewTitle.textContent = `${getFileIcon(node)} ${node.name}`;
+  filePreviewPath.textContent = node.rel_path;
+  filePreviewContent.textContent = 'Memuat isi file...';
+  filePreviewModal.hidden = false;
+
+  try {
+    const data = await invokeCommand<WorkspaceFileContent>('read_workspace_file', { path: node.path });
+    filePreviewContent.textContent = data.content;
+  } catch (error) {
+    filePreviewContent.textContent = `Gagal membaca file: ${error instanceof Error ? error.message : String(error)}`;
+  }
+}
+
+function initFilePreviewModal() {
+  closeFilePreviewModalButton?.addEventListener('click', () => {
+    if (filePreviewModal) filePreviewModal.hidden = true;
+  });
+  closeFilePreviewButton?.addEventListener('click', () => {
+    if (filePreviewModal) filePreviewModal.hidden = true;
+  });
+  filePreviewCopyBtn?.addEventListener('click', () => {
+    if (filePreviewContent?.textContent) {
+      navigator.clipboard.writeText(filePreviewContent.textContent);
+      filePreviewCopyBtn.textContent = '✓ Disalin!';
+      setTimeout(() => {
+        if (filePreviewCopyBtn) filePreviewCopyBtn.textContent = '📋 Salin Isi';
+      }, 1500);
+    }
+  });
+  filePreviewAttachBtn?.addEventListener('click', async () => {
+    if (!previewingFileNode) return;
+    try {
+      const data = await invokeCommand<WorkspaceFileContent>('read_workspace_file', { path: previewingFileNode.path });
+      if (!data.is_binary) {
+        pendingChatAttachments.push({
+          name: previewingFileNode.name,
+          mime: 'text/plain',
+          data_base64: btoa(unescape(encodeURIComponent(data.content))),
+          bytes: data.size,
+        });
+        renderPendingChatAttachments();
+      }
+      if (filePreviewModal) filePreviewModal.hidden = true;
+      chatInput?.focus();
+    } catch (error) {
+      alert(error instanceof Error ? error.message : String(error));
+    }
+  });
+}
+
+function initQuickModelSwitcher() {
+  modelSwitcherBtn?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (modelSwitcherMenu) {
+      modelSwitcherMenu.hidden = !modelSwitcherMenu.hidden;
+      if (!modelSwitcherMenu.hidden) {
+        updateActiveModelSelection();
+      }
+    }
+  });
+
+  document.addEventListener('click', (e) => {
+    if (modelSwitcherMenu && !modelSwitcherMenu.hidden && !modelSwitcherDropdown?.contains(e.target as Node)) {
+      modelSwitcherMenu.hidden = true;
+    }
+  });
+
+  document.querySelectorAll<HTMLButtonElement>('.model-option-btn').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const provider = btn.dataset.provider || 'custom';
+      const model = btn.dataset.model || 'cx/gpt-5.5';
+      const endpoint = btn.dataset.endpoint;
+      await switchActiveModel(provider, model, endpoint);
+      if (modelSwitcherMenu) modelSwitcherMenu.hidden = true;
+    });
+  });
+
+  detectLocalModelsBtn?.addEventListener('click', async (e) => {
+    e.stopPropagation();
+    await detectAndRenderLocalModels();
+  });
+}
+
+async function switchActiveModel(provider: string, model: string, endpoint?: string) {
+  try {
+    const config = await invokeCommand<DesktopProviderConfig>('switch_desktop_provider_model', {
+      provider,
+      model,
+      endpoint: endpoint ?? null,
+    });
+    currentProviderConfig = config;
+    if (activeModelNameEl) {
+      activeModelNameEl.textContent = config.model;
+    }
+    if (providerModelInput) providerModelInput.value = config.model;
+    if (providerSelect) providerSelect.value = config.provider;
+    if (providerEndpointInput) providerEndpointInput.value = config.endpoint;
+    void refreshProviderHealth();
+  } catch (error) {
+    console.error('Failed to switch model:', error);
+  }
+}
+
+async function detectAndRenderLocalModels() {
+  if (!detectedLocalModelsList || !detectLocalModelsBtn) return;
+  detectLocalModelsBtn.disabled = true;
+  detectLocalModelsBtn.textContent = 'Scanning...';
+  detectedLocalModelsList.innerHTML = '<p class="no-local-models-hint">Scanning Ollama (11434) & LM Studio (1234)...</p>';
+
+  try {
+    const models = await invokeCommand<DetectedLocalModel[]>('detect_local_llm_models');
+    detectedLocalModels = models;
+    detectLocalModelsBtn.disabled = false;
+    detectLocalModelsBtn.textContent = '🔄 Deteksi';
+
+    if (!models.length) {
+      detectedLocalModelsList.innerHTML = '<p class="no-local-models-hint">Tidak ada service Ollama / LM Studio aktif di localhost.</p>';
+      return;
+    }
+
+    detectedLocalModelsList.innerHTML = '';
+    for (const m of models) {
+      const btn = document.createElement('button');
+      btn.className = 'model-option-btn';
+      btn.type = 'button';
+      btn.innerHTML = `
+        <span class="model-opt-icon">${m.provider === 'ollama' ? '🦙' : '🤖'}</span>
+        <span class="model-opt-name">${m.model}</span>
+        ${m.details ? `<span style="margin-left:auto;font-size:9.5px;color:#64748B;">${m.details}</span>` : ''}
+      `;
+      btn.addEventListener('click', async () => {
+        await switchActiveModel(m.provider, m.model, m.endpoint);
+        if (modelSwitcherMenu) modelSwitcherMenu.hidden = true;
+      });
+      detectedLocalModelsList.append(btn);
+    }
+  } catch (error) {
+    detectLocalModelsBtn.disabled = false;
+    detectLocalModelsBtn.textContent = '🔄 Deteksi';
+    detectedLocalModelsList.innerHTML = `<p class="no-local-models-hint">Error: ${error instanceof Error ? error.message : String(error)}</p>`;
+  }
+}
+
+function updateActiveModelSelection() {
+  const currentModel = currentProviderConfig?.model || activeModelNameEl?.textContent || '';
+  document.querySelectorAll<HTMLButtonElement>('.model-option-btn').forEach((btn) => {
+    btn.classList.toggle('active', btn.dataset.model === currentModel);
+  });
+}
+
+function updateChatTokenGauge(session: DesktopChatSession | null) {
+  if (!chatTokenGauge) return;
+  if (!session || !session.messages.length) {
+    chatTokenGauge.textContent = '0 tok';
+    return;
+  }
+  const totalChars = session.messages.reduce((sum, msg) => sum + (msg.content?.length || 0), 0);
+  const estimatedTokens = Math.round(totalChars / 4);
+  chatTokenGauge.textContent = estimatedTokens > 1000
+    ? `${(estimatedTokens / 1000).toFixed(1)}k tok`
+    : `${estimatedTokens} tok`;
+}
+
+function flattenWorkspaceFiles(nodes: WorkspaceFileNode[]): WorkspaceFileNode[] {
+  const list: WorkspaceFileNode[] = [];
+  function traverse(n: WorkspaceFileNode) {
+    if (!n.is_dir) list.push(n);
+    if (n.children) {
+      for (const c of n.children) traverse(c);
+    }
+  }
+  for (const node of nodes) traverse(node);
+  return list;
+}
+
+function initAtMentionAutocomplete() {
+  if (!chatInput || !atMentionPopover || !atMentionList) return;
+
+  chatInput.addEventListener('input', () => {
+    const val = chatInput.value;
+    const cursorPos = chatInput.selectionStart || 0;
+    const textBeforeCursor = val.slice(0, cursorPos);
+    const lastAtIndex = textBeforeCursor.lastIndexOf('@');
+
+    if (lastAtIndex !== -1 && (lastAtIndex === 0 || /\s/.test(textBeforeCursor[lastAtIndex - 1]))) {
+      const query = textBeforeCursor.slice(lastAtIndex + 1);
+      if (!query.includes(' ') && !query.includes('\n')) {
+        renderAtMentionSuggestions(query);
+        return;
+      }
+    }
+    closeAtMentionPopover();
+  });
+
+  chatInput.addEventListener('keydown', (e) => {
+    if (atMentionPopover.hidden) return;
+    const items = atMentionList.querySelectorAll<HTMLElement>('.at-mention-item');
+    if (!items.length) return;
+
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      atMentionSelectedIndex = (atMentionSelectedIndex + 1) % items.length;
+      updateAtMentionSelection();
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      atMentionSelectedIndex = (atMentionSelectedIndex - 1 + items.length) % items.length;
+      updateAtMentionSelection();
+    } else if (e.key === 'Enter' || e.key === 'Tab') {
+      if (currentFilteredAtMentionFiles[atMentionSelectedIndex]) {
+        e.preventDefault();
+        void insertAtMention(currentFilteredAtMentionFiles[atMentionSelectedIndex]);
+      }
+    } else if (e.key === 'Escape') {
+      closeAtMentionPopover();
+    }
+  });
+}
+
+let currentFilteredAtMentionFiles: WorkspaceFileNode[] = [];
+
+function renderAtMentionSuggestions(query: string) {
+  if (!atMentionPopover || !atMentionList) return;
+  const flatFiles = flattenWorkspaceFiles(workspaceFileTree);
+  const filtered = flatFiles
+    .filter((f) => f.name.toLowerCase().includes(query.toLowerCase()) || f.rel_path.toLowerCase().includes(query.toLowerCase()))
+    .slice(0, 8);
+
+  currentFilteredAtMentionFiles = filtered;
+
+  if (!filtered.length) {
+    closeAtMentionPopover();
+    return;
+  }
+
+  atMentionSelectedIndex = 0;
+  atMentionList.innerHTML = '';
+
+  filtered.forEach((file, index) => {
+    const item = document.createElement('div');
+    item.className = `at-mention-item ${index === 0 ? 'selected' : ''}`;
+    item.innerHTML = `
+      <span>${getFileIcon(file)} ${file.rel_path}</span>
+      <span style="font-size: 10px; color: #64748B;">${formatAttachmentBytes(file.size)}</span>
+    `;
+    item.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      void insertAtMention(file);
+    });
+    item.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      void insertAtMention(file);
+    });
+    atMentionList.appendChild(item);
+  });
+
+  atMentionPopover.hidden = false;
+  atMentionPopover.style.display = 'block';
+}
+
+function updateAtMentionSelection() {
+  const items = atMentionList?.querySelectorAll<HTMLElement>('.at-mention-item');
+  items?.forEach((item, idx) => {
+    item.classList.toggle('selected', idx === atMentionSelectedIndex);
+  });
+}
+
+function closeAtMentionPopover() {
+  if (atMentionPopover) {
+    atMentionPopover.hidden = true;
+    atMentionPopover.style.display = 'none';
+  }
+}
+
+async function insertAtMention(file: WorkspaceFileNode) {
+  if (!chatInput) return;
+  const val = chatInput.value;
+  let cursorPos = chatInput.selectionStart || 0;
+  if (cursorPos === 0 && val.length > 0) {
+    cursorPos = val.length;
+  }
+  const textBeforeCursor = val.slice(0, cursorPos);
+  const textAfterCursor = val.slice(cursorPos);
+  const lastAtIndex = textBeforeCursor.lastIndexOf('@');
+
+  if (lastAtIndex !== -1) {
+    chatInput.value = textBeforeCursor.slice(0, lastAtIndex) + `@${file.rel_path} ` + textAfterCursor;
+    chatInput.selectionStart = chatInput.selectionEnd = lastAtIndex + file.rel_path.length + 2;
+  } else {
+    chatInput.value = `${val} @${file.rel_path} `;
+  }
+  closeAtMentionPopover();
+  chatInput.focus();
+
+  try {
+    const data = await invokeCommand<WorkspaceFileContent>('read_workspace_file', { path: file.path });
+    if (!data.is_binary && !pendingChatAttachments.some((a) => a.name === file.name)) {
+      pendingChatAttachments.push({
+        name: file.name,
+        mime: 'text/plain',
+        data_base64: btoa(unescape(encodeURIComponent(data.content))),
+        bytes: data.size,
+      });
+      renderPendingChatAttachments();
+    }
+  } catch (err) {
+    console.error('Failed to attach mentioned file:', err);
   }
 }
 
@@ -1221,9 +1764,72 @@ function renderChatMessages() {
     body.className = 'chat-message-body';
     if (message.role === 'user') {
       body.textContent = message.content;
+      const editBtn = document.createElement('button');
+      editBtn.type = 'button';
+      editBtn.className = 'user-msg-edit-btn';
+      editBtn.title = 'Gunakan kembali prompt ini';
+      editBtn.textContent = '✎';
+      editBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (chatInput) {
+          chatInput.value = message.content;
+          chatInput.focus();
+        }
+      });
+      item.append(editBtn);
     } else {
       if (message.content) {
         body.innerHTML = marked.parse(message.content) as string;
+
+        body.querySelectorAll('pre code').forEach((codeBlock) => {
+          const text = codeBlock.textContent || '';
+          const pre = codeBlock.parentElement;
+          if (!pre || pre.querySelector('.code-preview-header')) return;
+
+          const firstLine = text.split('\n')[0].trim();
+          const fileMatch = firstLine.match(/^(?:\/\/|#|\/\*|<!--)\s*(?:file:)?\s*([a-zA-Z0-9_\-\.\/]+\.[a-zA-Z0-9]+)/i);
+          const targetPath = fileMatch ? fileMatch[1] : null;
+
+          const header = document.createElement('div');
+          header.className = 'code-preview-header';
+          header.innerHTML = `
+            <span class="code-file-path">${targetPath || codeBlock.className.replace('language-', '') || 'code'}</span>
+            <div style="display: flex; gap: 4px;">
+              ${targetPath ? `<button type="button" class="code-apply-btn" data-path="${targetPath}">⚡ Terapkan</button>` : ''}
+              <button type="button" class="code-copy-btn">Salin</button>
+            </div>
+          `;
+          const copyBtn = header.querySelector('.code-copy-btn');
+          copyBtn?.addEventListener('click', () => {
+            navigator.clipboard.writeText(text);
+            copyBtn.textContent = '✓ Disalin';
+            setTimeout(() => { copyBtn.textContent = 'Salin'; }, 1500);
+          });
+          const applyBtn = header.querySelector('.code-apply-btn') as HTMLButtonElement | null;
+          if (applyBtn && targetPath) {
+            applyBtn.addEventListener('click', async () => {
+              try {
+                applyBtn.disabled = true;
+                applyBtn.textContent = 'Menerapkan...';
+                await invokeCommand<boolean>('apply_code_to_file', { path: targetPath, content: text });
+                applyBtn.classList.add('applied');
+                applyBtn.textContent = '✓ Diterapkan';
+                void loadWorkspaceFiles();
+                void loadWorkspaceGitStatus();
+                setTimeout(() => {
+                  applyBtn.classList.remove('applied');
+                  applyBtn.textContent = '⚡ Terapkan';
+                  applyBtn.disabled = false;
+                }, 2500);
+              } catch (err) {
+                alert(err instanceof Error ? err.message : String(err));
+                applyBtn.disabled = false;
+                applyBtn.textContent = '⚡ Terapkan';
+              }
+            });
+          }
+          pre.prepend(header);
+        });
       } else if (message.id === `stream-${activeChatStreamRequestId}`) {
         body.innerHTML = '<div class="typing-indicator"><span></span><span></span><span></span></div>';
       } else {
@@ -1237,6 +1843,8 @@ function renderChatMessages() {
     messageNodes.push(item);
   }
   chatMessages.replaceChildren(...messageNodes);
+
+  updateChatTokenGauge(session);
 
   // Smart auto-scroll: Only auto-scroll to bottom if user has not scrolled up to inspect history/trajectory
   if (!userScrolledUp) {
@@ -3277,7 +3885,20 @@ async function startDesktop() {
     const runtime = await invokeCommand<DesktopRuntimeStatus>('get_desktop_runtime_status');
     renderRuntime(runtime);
     await loadProviderConfig();
-    await Promise.all([loadWorkspaces(), loadChatSessions(), loadMemories(), loadSkills(), loadWorkflows(), loadMcpServers(), loadGraphify(), loadMedia()]);
+    initSidebarViewTabs();
+    initFilePreviewModal();
+    initQuickModelSwitcher();
+    initAtMentionAutocomplete();
+    await Promise.all([
+      loadWorkspaces(),
+      loadChatSessions(),
+      loadMemories(),
+      loadSkills(),
+      loadWorkflows(),
+      loadMcpServers(),
+      loadGraphify(),
+      loadMedia(),
+    ]);
     await listenCommand<DesktopChatStreamEvent>('desktop-chat-stream', (event) => {
       applyChatStreamEvent(event.payload);
     });

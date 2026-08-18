@@ -72,11 +72,20 @@
           </a>
         </nav>
 
-        <!-- Chat Sessions Section -->
+        <!-- Chat Sessions & Explorer Section -->
         <div class="sidebar-chat-box">
+          <div class="sidebar-view-tabs">
+            <button id="sidebar-tab-sessions" class="sidebar-tab-btn active" type="button">Sesi</button>
+            <button id="sidebar-tab-explorer" class="sidebar-tab-btn" type="button">Files</button>
+          </div>
           <div class="sidebar-chat-title">
-            <span class="sidebar-chat-title-text">Workspaces & Sessions</span>
+            <span id="sidebar-panel-title-text" class="sidebar-chat-title-text">Workspaces & Sessions</span>
             <div class="sidebar-chat-actions">
+              <button id="sidebar-refresh-files-button" class="sidebar-header-btn" type="button" title="Refresh File Tree" aria-label="Refresh Files" hidden>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M23 4v6h-6"></path><path d="M1 20v-6h6"></path><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+                </svg>
+              </button>
               <button id="sidebar-new-folder-button" class="sidebar-header-btn" type="button" title="Buat Workspace / Folder Baru" aria-label="Buat Workspace Baru">
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                   <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
@@ -92,8 +101,16 @@
               </button>
             </div>
           </div>
+          <div id="sidebar-git-status-bar" class="sidebar-git-bar">
+            <span class="git-icon">🌿</span>
+            <span id="sidebar-git-branch" class="git-branch-name">main</span>
+            <span id="sidebar-git-stats" class="git-stats-pill">clean</span>
+          </div>
           <div id="sidebar-chat-session-list" class="sidebar-session-list">
             <p class="sidebar-chat-empty">Belum ada sesi.</p>
+          </div>
+          <div id="sidebar-file-explorer-list" class="sidebar-session-list" hidden>
+            <p class="sidebar-chat-empty">Memuat file workspace...</p>
           </div>
         </div>
       </aside>
@@ -219,7 +236,52 @@
                   <span class="workspace-icon">📁</span>
                   <span id="active-workspace-name" class="workspace-name">Default</span>
                   <span id="active-workspace-memory-pill" class="workspace-memory-pill">0 memori</span>
+                  <span id="active-workspace-git-pill" class="workspace-git-pill" title="Git Status">🌿 main</span>
                 </div>
+
+                <!-- Quick Model Switcher Dropdown -->
+                <div id="model-switcher-dropdown" class="model-switcher-dropdown">
+                  <button id="model-switcher-btn" class="model-switcher-btn" type="button" aria-expanded="false" title="Ganti Model / Provider AI">
+                    <span class="model-icon">⚡</span>
+                    <span id="active-model-name" class="active-model-name">cx/gpt-5.5</span>
+                    <svg class="dropdown-chevron" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                      <polyline points="6 9 12 15 18 9"></polyline>
+                    </svg>
+                  </button>
+                  <div id="model-switcher-menu" class="model-switcher-menu" hidden>
+                    <div class="model-menu-section">
+                      <span class="model-menu-label">Preset Cloud Models</span>
+                      <button class="model-option-btn" type="button" data-provider="custom" data-model="cx/gpt-5.5" data-endpoint="http://127.0.0.1:20128/v1">
+                        <span class="model-opt-icon">⚡</span>
+                        <span class="model-opt-name">GPT-5.5 (Custom)</span>
+                      </button>
+                      <button class="model-option-btn" type="button" data-provider="openai" data-model="gpt-4o" data-endpoint="https://api.openai.com/v1">
+                        <span class="model-opt-icon">✨</span>
+                        <span class="model-opt-name">GPT-4o (OpenAI)</span>
+                      </button>
+                      <button class="model-option-btn" type="button" data-provider="anthropic" data-model="claude-3-7-sonnet" data-endpoint="https://api.anthropic.com/v1">
+                        <span class="model-opt-icon">🟣</span>
+                        <span class="model-opt-name">Claude 3.7 Sonnet</span>
+                      </button>
+                      <button class="model-option-btn" type="button" data-provider="openrouter" data-model="deepseek/deepseek-r1" data-endpoint="https://openrouter.ai/api/v1">
+                        <span class="model-opt-icon">🧠</span>
+                        <span class="model-opt-name">DeepSeek R1</span>
+                      </button>
+                    </div>
+                    <div class="model-menu-section">
+                      <div class="model-section-header">
+                        <span class="model-menu-label">Local Models</span>
+                        <button id="detect-local-models-btn" class="btn-detect-local" type="button" title="Deteksi Ollama / LM Studio">
+                          <span>🔄 Deteksi</span>
+                        </button>
+                      </div>
+                      <div id="detected-local-models-list" class="detected-models-list">
+                        <p class="no-local-models-hint">Klik Deteksi untuk scan Ollama/LM Studio.</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
                 <div id="session-dropdown" class="session-dropdown">
                   <button id="session-dropdown-trigger" class="session-dropdown-btn" type="button" aria-expanded="false" aria-haspopup="true">
                     <span class="session-btn-icon">💬</span>
@@ -252,6 +314,7 @@
                 </select>
               </div>
               <div class="chat-header-tools">
+                <span id="chat-token-gauge" class="chat-token-gauge" title="Estimasi Token Sesi">0 tok</span>
                 <button id="new-chat-button" class="btn btn-secondary btn-sm" type="button">Sesi Baru</button>
                 <button id="retry-chat-button" class="btn btn-secondary btn-sm" type="button" disabled>Retry</button>
                 <button id="cancel-chat-stream-button" class="btn btn-danger btn-sm" type="button" hidden>Batal</button>
@@ -271,10 +334,19 @@
             </div>
 
             <div class="chat-composer-container">
+              <!-- At Mention Floating Popover -->
+              <div id="at-mention-popover" class="at-mention-popover" hidden>
+                <div class="at-mention-header">
+                  <span>Pilih File / Simbol Konteks</span>
+                  <span class="at-hint">Esc untuk batal</span>
+                </div>
+                <div id="at-mention-list" class="at-mention-list"></div>
+              </div>
+
               <form id="chat-form" class="chat-composer">
                 <div id="chat-attachments" class="chat-attachment-strip" hidden></div>
                 <div class="composer-main-area">
-                  <textarea id="chat-input" class="composer-textarea" placeholder="Tulis instruksi, tanyakan kode, jalankan perintah..." rows="1"></textarea>
+                  <textarea id="chat-input" class="composer-textarea" placeholder="Tulis instruksi, ketik @ untuk konteks file, jalankan perintah..." rows="1"></textarea>
                 </div>
                 <div class="composer-bottom-bar">
                   <div class="composer-actions-left">
@@ -671,6 +743,30 @@
         <div class="app-modal-footer">
           <button id="cancel-move-session-button" class="btn btn-secondary" type="button">Batal</button>
           <button id="confirm-move-session-button" class="btn btn-primary" type="button">Pindahkan Sesi</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Workspace File Preview Modal Dialog -->
+    <div id="file-preview-modal" class="app-modal" hidden>
+      <div class="app-modal-backdrop"></div>
+      <div class="app-modal-dialog modal-dialog-lg">
+        <div class="app-modal-header">
+          <div class="modal-title-with-meta">
+            <h3 id="file-preview-title">📄 File Preview</h3>
+            <span id="file-preview-path" class="modal-file-path-badge"></span>
+          </div>
+          <button id="close-file-preview-modal-button" class="btn-icon" type="button">✕</button>
+        </div>
+        <div class="app-modal-body">
+          <div class="file-preview-body-container">
+            <pre id="file-preview-content" class="file-preview-pre"><code></code></pre>
+          </div>
+        </div>
+        <div class="app-modal-footer">
+          <button id="file-preview-attach-btn" class="btn btn-secondary" type="button">📎 Lampirkan ke Chat</button>
+          <button id="file-preview-copy-btn" class="btn btn-secondary" type="button">📋 Salin Isi</button>
+          <button id="close-file-preview-button" class="btn btn-primary" type="button">Tutup</button>
         </div>
       </div>
     </div>

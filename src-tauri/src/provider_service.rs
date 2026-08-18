@@ -16,6 +16,14 @@ pub struct DesktopProviderConfig {
     pub endpoint: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct DetectedLocalModel {
+    pub provider: String,
+    pub model: String,
+    pub endpoint: String,
+    pub details: Option<String>,
+}
+
 impl Default for DesktopProviderConfig {
     fn default() -> Self {
         Self {
@@ -153,6 +161,79 @@ pub async fn check_desktop_provider_health(
     tauri::async_runtime::spawn_blocking(move || check_provider(config))
         .await
         .map_err(|error| format!("Failed to wait for provider health check: {error}"))
+}
+
+#[tauri::command]
+pub fn detect_local_llm_models() -> Result<Vec<DetectedLocalModel>, String> {
+    let mut detected = Vec::new();
+
+    let client = reqwest::blocking::Client::builder()
+        .timeout(Duration::from_millis(600))
+        .build()
+        .unwrap_or_default();
+
+    // 1. Probe Ollama at http://127.0.0.1:11434/api/tags
+    if let Ok(resp) = client.get("http://127.0.0.1:11434/api/tags").send() {
+        if resp.status().is_success() {
+            if let Ok(json) = resp.json::<serde_json::Value>() {
+                if let Some(models) = json.get("models").and_then(|m| m.as_array()) {
+                    for m in models {
+                        if let Some(name) = m.get("name").and_then(|n| n.as_str()) {
+                            let size = m.get("size").and_then(|s| s.as_u64()).map(|s| {
+                                format!("{:.1} GB", s as f64 / (1024.0 * 1024.0 * 1024.0))
+                            });
+                            detected.push(DetectedLocalModel {
+                                provider: "ollama".to_string(),
+                                model: name.to_string(),
+                                endpoint: "http://127.0.0.1:11434/v1".to_string(),
+                                details: size,
+                            });
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // 2. Probe LM Studio at http://127.0.0.1:1234/v1/models
+    if let Ok(resp) = client.get("http://127.0.0.1:1234/v1/models").send() {
+        if resp.status().is_success() {
+            if let Ok(json) = resp.json::<serde_json::Value>() {
+                if let Some(models) = json.get("data").and_then(|m| m.as_array()) {
+                    for m in models {
+                        if let Some(id) = m.get("id").and_then(|i| i.as_str()) {
+                            detected.push(DetectedLocalModel {
+                                provider: "custom".to_string(),
+                                model: id.to_string(),
+                                endpoint: "http://127.0.0.1:1234/v1".to_string(),
+                                details: Some("LM Studio".to_string()),
+                            });
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(detected)
+}
+
+#[tauri::command]
+pub fn switch_desktop_provider_model(
+    app: AppHandle,
+    provider: String,
+    model: String,
+    endpoint: Option<String>,
+) -> Result<DesktopProviderConfig, String> {
+    let mut config = load_provider_config(&app)?;
+    config.provider = provider;
+    config.model = model;
+    if let Some(ep) = endpoint {
+        if !ep.trim().is_empty() {
+            config.endpoint = ep;
+        }
+    }
+    save_provider_config(&app, config)
 }
 
 #[cfg(test)]
