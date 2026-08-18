@@ -742,3 +742,31 @@ test('renders natural agent tree with clean hierarchy and collapsible drawers', 
   await treeContainer.locator('.tree-copy-btn').click();
   await expect(treeContainer.locator('.tree-copy-btn')).toContainText('✓');
 });
+
+test('switches cleanly between chat, memory, and dashboard without layout overlap', async ({ page }) => {
+  await installMockTauri(page);
+  await page.goto('/');
+
+  // 1. Open Chat page
+  await openDesktopPage(page, 'chat');
+  await expect(page.locator('#chat-section')).toBeVisible();
+  await expect(page.locator('#dashboard-section')).toBeHidden();
+  await expect(page.locator('#memory-section')).toBeHidden();
+
+  // 2. Switch to Memory page
+  await openDesktopPage(page, 'memory');
+  await expect(page.locator('#memory-section')).toBeVisible();
+  await expect(page.locator('#chat-section')).toBeHidden();
+  await expect(page.locator('#dashboard-section')).toBeHidden();
+
+  // 3. Switch to Dashboard page
+  await openDesktopPage(page, 'dashboard');
+  await expect(page.locator('#dashboard-section')).toBeVisible();
+  await expect(page.locator('#chat-section')).toBeHidden();
+  await expect(page.locator('#memory-section')).toBeHidden();
+
+  // 4. Switch to Skill page
+  await openDesktopPage(page, 'skill');
+  await expect(page.locator('#skill-section')).toBeVisible();
+  await expect(page.locator('#chat-section')).toBeHidden();
+});

@@ -616,19 +616,27 @@ input, textarea, select {
 }
 
 /* Chat Section */
-.chat-panel,
+.chat-panel {
+  display: none;
+  flex-direction: column;
+  height: 100%;
+  max-height: 100%;
+  flex: 1 1 0%;
+  min-height: 0;
+  padding: 0;
+  margin: 0;
+  max-width: 100%;
+  width: 100%;
+  overflow: hidden;
+}
+
 .chat-panel.page-active {
   display: flex !important;
-  flex-direction: column !important;
-  height: 100% !important;
-  max-height: 100% !important;
-  flex: 1 1 0% !important;
-  min-height: 0 !important;
-  padding: 0 !important;
-  margin: 0 !important;
-  max-width: 100% !important;
-  width: 100% !important;
-  overflow: hidden !important;
+}
+
+.feature-panel[hidden],
+.chat-panel[hidden] {
+  display: none !important;
 }
 
 .chat-header-bar {
