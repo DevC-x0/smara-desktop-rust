@@ -170,6 +170,18 @@ pub fn list_desktop_builtin_tools_internal() -> Vec<DesktopBuiltinTool> {
             "workspace-mutation",
             true,
         ),
+        tool(
+            "run_command",
+            "Execute a shell command in the workspace directory with stdout/stderr capture.",
+            "workspace-mutation",
+            true,
+        ),
+        tool(
+            "fetch_web_content",
+            "Fetch readable text content and documentation from a web URL.",
+            "safe-readonly",
+            false,
+        ),
     ]
 }
 
@@ -364,6 +376,34 @@ pub fn export_openai_tools_schema() -> Vec<Value> {
                     "required": ["path", "patch"]
                 }
             }
+        }),
+        serde_json::json!({
+            "type": "function",
+            "function": {
+                "name": "run_command",
+                "description": "Execute a shell command directly in the workspace directory (e.g. 'cargo test', 'git status', 'npm run check', 'tree').",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "command": { "type": "string", "description": "The exact shell command string to execute" }
+                    },
+                    "required": ["command"]
+                }
+            }
+        }),
+        serde_json::json!({
+            "type": "function",
+            "function": {
+                "name": "fetch_web_content",
+                "description": "Fetch web documentation, articles, or API specifications from a URL.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "url": { "type": "string", "description": "The full HTTP or HTTPS URL to fetch" }
+                    },
+                    "required": ["url"]
+                }
+            }
         })
     ]
 }
@@ -397,7 +437,7 @@ fn tool(
 }
 
 pub fn is_mutating_tool(name: &str) -> bool {
-    matches!(name, "write_file" | "edit_file" | "delete_file" | "copy_file" | "rename_file" | "apply_diff" | "create_terminal" | "kill_process" | "git_commit")
+    matches!(name, "run_command" | "write_file" | "edit_file" | "delete_file" | "copy_file" | "rename_file" | "apply_diff" | "create_terminal" | "kill_process" | "git_commit")
 }
 
 fn validate_tool(name: &str) -> Result<(), String> {
@@ -1048,6 +1088,77 @@ fn execute(root: &Path, tool: &str, args: &Value) -> Result<String, String> {
                 Err(format!("Git commit failed:\n{}{}", stdout, stderr))
             }
         }
+        "run_command" => {
+            let command = get_string(args, "command")?;
+            #[cfg(unix)]
+            let mut cmd = std::process::Command::new("sh");
+            #[cfg(unix)]
+            cmd.args(["-c", command]);
+
+            #[cfg(not(unix))]
+            let mut cmd = std::process::Command::new("cmd");
+            #[cfg(not(unix))]
+            cmd.args(["/C", command]);
+
+            cmd.current_dir(root);
+            let output = cmd.output().map_err(|error| format!("Failed to execute command '{command}': {error}"))?;
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            let code = output.status.code().unwrap_or(-1);
+            let status_label = if output.status.success() { "Exit 0 (Success)" } else { "Exit failed" };
+
+            let mut out = format!("$ {command}\n[Status: {status_label} (code {code})]\n");
+            if !stdout.trim().is_empty() {
+                out.push_str(&format!("\n--- STDOUT ---\n{stdout}"));
+            }
+            if !stderr.trim().is_empty() {
+                out.push_str(&format!("\n--- STDERR ---\n{stderr}"));
+            }
+            if stdout.trim().is_empty() && stderr.trim().is_empty() {
+                out.push_str("\n(Command produced no output)");
+            }
+            Ok(out)
+        }
+        "fetch_web_content" => {
+            let url = get_string(args, "url")?;
+            if !url.starts_with("http://") && !url.starts_with("https://") {
+                return Err("URL must start with http:// or https://".to_string());
+            }
+            let client = reqwest::blocking::Client::builder()
+                .timeout(std::time::Duration::from_secs(15))
+                .user_agent("Mozilla/5.0 (compatible; SmaraDesktop/0.3.0)")
+                .build()
+                .map_err(|e| format!("Failed to create HTTP client: {e}"))?;
+            let res = client.get(url).send().map_err(|e| format!("Failed to fetch URL '{url}': {e}"))?;
+            let status = res.status();
+            let body = res.text().map_err(|e| format!("Failed to read response body: {e}"))?;
+            
+            let clean = body
+                .replace("<script", "\n<!--script")
+                .replace("</script>", "-->\n")
+                .replace("<style", "\n<!--style")
+                .replace("</style>", "-->\n");
+            let text_only = clean
+                .lines()
+                .filter(|l| !l.trim().starts_with("<!--") && !l.trim().starts_with("<") && !l.trim().is_empty())
+                .take(150)
+                .collect::<Vec<_>>()
+                .join("\n");
+
+            let preview = if text_only.len() > 3000 {
+                format!("{}...\n[Truncated]", &text_only[..3000])
+            } else if text_only.is_empty() {
+                if body.len() > 3000 {
+                    format!("{}...\n[Raw Content Truncated]", &body[..3000])
+                } else {
+                    body
+                }
+            } else {
+                text_only
+            };
+
+            Ok(format!("HTTP {status} from {url}\n\n{preview}"))
+        }
         _ => Err(format!("Unsupported Desktop built-in tool '{tool}'.")),
     }
 }
@@ -1136,8 +1247,10 @@ mod tests {
             .any(|tool| tool.name == "read_file" && !tool.requires_approval));
         assert!(tools
             .iter()
-            .any(|tool| tool.name == "write_file" && tool.requires_approval));
-        assert!(!tools.iter().any(|tool| tool.name == "run_command"));
+            .any(|tool| tool.name == "run_command" && tool.requires_approval));
+        assert!(tools
+            .iter()
+            .any(|tool| tool.name == "fetch_web_content" && !tool.requires_approval));
     }
 
     #[test]
@@ -1249,5 +1362,20 @@ mod tests {
         assert!(output.is_empty());
         let _ = fs::remove_dir_all(root);
         let _ = fs::remove_dir_all(outside);
+    }
+
+    #[test]
+    fn run_command_executes_in_workspace() {
+        let root = temp_workspace();
+        let result = run(
+            &root,
+            "run_command",
+            json!({"command": "echo 'smara terminal test'"}),
+            true,
+        )
+        .unwrap();
+        assert!(result.output.contains("smara terminal test"));
+        assert!(result.output.contains("Exit 0"));
+        let _ = fs::remove_dir_all(root);
     }
 }

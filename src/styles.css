@@ -1173,6 +1173,65 @@ input, textarea, select {
   color: var(--text-muted);
 }
 
+/* Terminal Console Card */
+.terminal-console-card {
+  margin-top: 8px;
+  background: #030503;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  overflow: hidden;
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.terminal-console-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px;
+  background: rgba(255, 255, 255, 0.04);
+  border-bottom: 1px solid var(--border);
+  gap: 8px;
+}
+
+.terminal-prompt-title {
+  color: #BEF264;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.terminal-status-badge {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 3px;
+  white-space: nowrap;
+}
+
+.terminal-status-badge.badge-success {
+  background: rgba(190, 242, 100, 0.15);
+  color: var(--accent);
+}
+
+.terminal-status-badge.badge-failure {
+  background: rgba(248, 113, 113, 0.15);
+  color: var(--danger);
+}
+
+.terminal-console-body {
+  padding: 8px 12px;
+  margin: 0;
+  max-height: 260px;
+  overflow-y: auto;
+  overflow-x: auto;
+  color: #D2E4CC;
+  white-space: pre-wrap;
+  word-break: break-all;
+  line-height: 1.45;
+}
+
 .chat-process-item strong {
   font-size: 11px;
   color: var(--text-main);

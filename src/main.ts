@@ -924,6 +924,32 @@ function renderDiffPreview(diffText: string): HTMLElement {
   return container;
 }
 
+function renderTerminalOutput(text: string): HTMLElement {
+  const container = document.createElement('div');
+  container.className = 'terminal-console-card';
+
+  const lines = text.split('\n');
+  const cmdLine = lines[0] || '$ command';
+  const statusLine = lines[1] || '';
+  const isSuccess = statusLine.includes('Success') || statusLine.includes('code 0');
+
+  const header = document.createElement('div');
+  header.className = 'terminal-console-header';
+  header.innerHTML = `
+    <span class="terminal-prompt-title">${cmdLine}</span>
+    <span class="terminal-status-badge ${isSuccess ? 'badge-success' : 'badge-failure'}">
+      ${isSuccess ? '✓ Exit 0' : '✕ Exit Error'}
+    </span>
+  `;
+
+  const body = document.createElement('pre');
+  body.className = 'terminal-console-body';
+  body.textContent = lines.slice(2).join('\n').trim() || text;
+
+  container.append(header, body);
+  return container;
+}
+
 function renderChatProcess(processes: ChatProcessEntry[], running: boolean) {
   const container = document.createElement('div');
   container.className = `agent-trace-card${running ? ' trace-running' : ' trace-completed'}`;
@@ -1057,6 +1083,8 @@ function renderChatProcess(processes: ChatProcessEntry[], running: boolean) {
         stepBody.append(p);
       }
       stepBody.append(renderDiffPreview(process.text));
+    } else if (process.text.startsWith('$ ') || process.text.includes('[Status: Exit')) {
+      stepBody.append(renderTerminalOutput(process.text));
     } else {
       stepBody.textContent = process.text;
     }
