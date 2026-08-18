@@ -871,6 +871,215 @@ function chatProcessIcon(kind: string): string {
   }
 }
 
+interface UnifiedAgentAction {
+  id: string;
+  category: 'tool' | 'reasoning' | 'context' | 'info';
+  toolName?: string;
+  toolTarget?: string;
+  toolArgsRaw?: string;
+  title: string;
+  status: 'running' | 'completed' | 'error';
+  output?: string;
+  startTime: number;
+  endTime?: number;
+}
+
+function parseToolExecution(text: string): { toolName: string; target: string; rawArgs: string } | null {
+  const match = text.match(/Eksekusi Tool:\s*`([^`]+)`\s*\((.*)\)/);
+  if (!match) return null;
+  const toolName = match[1];
+  const rawArgs = match[2];
+  let target = '';
+  try {
+    const parsed = JSON.parse(rawArgs);
+    if (parsed.path) target = parsed.path;
+    else if (parsed.command) target = parsed.command;
+    else if (parsed.url) target = parsed.url;
+    else if (parsed.query) target = parsed.query;
+    else if (parsed.pattern) target = parsed.pattern;
+    else if (parsed.goal) target = parsed.goal;
+    else target = Object.values(parsed).join(', ');
+  } catch {
+    target = rawArgs;
+  }
+  return { toolName, target, rawArgs };
+}
+
+function aggregateAgentProcesses(processes: ChatProcessEntry[]): UnifiedAgentAction[] {
+  const actions: UnifiedAgentAction[] = [];
+
+  for (const p of processes) {
+    if (p.kind === 'tool_start') {
+      const parsed = parseToolExecution(p.text);
+      if (parsed) {
+        actions.push({
+          id: `action-${actions.length + 1}`,
+          category: 'tool',
+          toolName: parsed.toolName,
+          toolTarget: parsed.target,
+          toolArgsRaw: parsed.rawArgs,
+          title: parsed.toolName,
+          status: 'running',
+          startTime: p.createdAt,
+        });
+      } else {
+        actions.push({
+          id: `action-${actions.length + 1}`,
+          category: 'info',
+          title: 'Inisialisasi',
+          status: 'running',
+          output: p.text,
+          startTime: p.createdAt,
+        });
+      }
+    } else if (p.kind === 'tool_done') {
+      const match = p.text.match(/^✓ Hasil `([^`]+)`:\s*([\s\S]*)$/);
+      if (match) {
+        const toolName = match[1];
+        const rawOutput = match[2];
+        const runningTool = [...actions].reverse().find(
+          (a) => a.category === 'tool' && a.toolName === toolName && a.status === 'running'
+        );
+        if (runningTool) {
+          runningTool.status = 'completed';
+          runningTool.output = rawOutput;
+          runningTool.endTime = p.createdAt;
+        } else {
+          actions.push({
+            id: `action-${actions.length + 1}`,
+            category: 'tool',
+            toolName,
+            title: toolName,
+            status: 'completed',
+            output: rawOutput,
+            startTime: p.createdAt,
+            endTime: p.createdAt,
+          });
+        }
+      } else if (p.text.includes('Provider stream selesai')) {
+        actions.forEach((a) => {
+          if (a.status === 'running') {
+            a.status = 'completed';
+            a.endTime = p.createdAt;
+          }
+        });
+      }
+    } else if (p.kind === 'reasoning') {
+      const last = actions[actions.length - 1];
+      if (last && last.category === 'reasoning' && last.status === 'running') {
+        last.output = (last.output || '') + p.text;
+        last.endTime = p.createdAt;
+      } else {
+        actions.push({
+          id: `action-${actions.length + 1}`,
+          category: 'reasoning',
+          title: 'Deep Reasoning Stream',
+          status: 'running',
+          output: p.text,
+          startTime: p.createdAt,
+          endTime: p.createdAt,
+        });
+      }
+    } else if (p.kind === 'explore') {
+      actions.push({
+        id: `action-${actions.length + 1}`,
+        category: 'context',
+        title: 'Workspace Scanner',
+        status: 'completed',
+        output: p.text,
+        startTime: p.createdAt,
+        endTime: p.createdAt,
+      });
+    } else if (p.kind === 'memory') {
+      actions.push({
+        id: `action-${actions.length + 1}`,
+        category: 'context',
+        title: 'Persistent Memory',
+        status: 'completed',
+        output: p.text,
+        startTime: p.createdAt,
+        endTime: p.createdAt,
+      });
+    } else if (p.kind === 'error') {
+      const last = actions[actions.length - 1];
+      if (last && last.status === 'running') {
+        last.status = 'error';
+        last.output = p.text;
+        last.endTime = p.createdAt;
+      } else {
+        actions.push({
+          id: `action-${actions.length + 1}`,
+          category: 'info',
+          title: 'System Error',
+          status: 'error',
+          output: p.text,
+          startTime: p.createdAt,
+          endTime: p.createdAt,
+        });
+      }
+    }
+  }
+
+  return actions;
+}
+
+function renderFileListPreview(output: string): HTMLElement {
+  const container = document.createElement('div');
+  container.className = 'file-list-preview-container';
+
+  const items = output.split('\n').map((s) => s.trim()).filter(Boolean);
+  const countBadge = document.createElement('div');
+  countBadge.className = 'file-list-count';
+  countBadge.textContent = `${items.length} file & direktori ditemukan:`;
+  container.append(countBadge);
+
+  const chipsWrapper = document.createElement('div');
+  chipsWrapper.className = 'file-chips-grid';
+
+  items.forEach((item) => {
+    const isDir = item.endsWith('/');
+    const chip = document.createElement('span');
+    chip.className = `file-chip ${isDir ? 'chip-dir' : 'chip-file'}`;
+    chip.innerHTML = `<span class="chip-icon">${isDir ? '📁' : '📄'}</span><span class="chip-name">${item}</span>`;
+    chipsWrapper.append(chip);
+  });
+
+  container.append(chipsWrapper);
+  return container;
+}
+
+function renderCodePreview(output: string, targetPath?: string): HTMLElement {
+  const container = document.createElement('div');
+  container.className = 'code-preview-card';
+
+  const header = document.createElement('div');
+  header.className = 'code-preview-header';
+  header.innerHTML = `
+    <span class="code-file-path">${targetPath || 'File Content'}</span>
+    <button type="button" class="code-copy-btn">📋 Salin</button>
+  `;
+
+  const copyBtn = header.querySelector('.code-copy-btn') as HTMLButtonElement;
+  if (copyBtn) {
+    copyBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      navigator.clipboard.writeText(output).then(() => {
+        copyBtn.textContent = '✓ Tersalin';
+        setTimeout(() => {
+          copyBtn.textContent = '📋 Salin';
+        }, 2000);
+      });
+    });
+  }
+
+  const pre = document.createElement('pre');
+  pre.className = 'code-preview-body';
+  pre.textContent = output;
+
+  container.append(header, pre);
+  return container;
+}
+
 function renderDiffPreview(diffText: string): HTMLElement {
   const container = document.createElement('div');
   container.className = 'diff-viewer-card';
@@ -950,7 +1159,41 @@ function renderTerminalOutput(text: string): HTMLElement {
   return container;
 }
 
+function getActionCategoryBadge(action: UnifiedAgentAction): { icon: string; label: string; themeClass: string } {
+  if (action.category === 'reasoning') {
+    return { icon: '🧠', label: 'Reasoning', themeClass: 'theme-reasoning' };
+  }
+  if (action.category === 'context') {
+    return { icon: '🔍', label: 'Context', themeClass: 'theme-context' };
+  }
+  if (action.category === 'tool' && action.toolName) {
+    switch (action.toolName) {
+      case 'read_file':
+      case 'view_file':
+        return { icon: '📄', label: 'read_file', themeClass: 'theme-read' };
+      case 'list_dir':
+      case 'search_path':
+      case 'glob':
+      case 'analyze_workspace':
+        return { icon: '📂', label: action.toolName, themeClass: 'theme-browse' };
+      case 'run_command':
+        return { icon: '💻', label: 'run_command', themeClass: 'theme-terminal' };
+      case 'edit_file':
+      case 'write_file':
+      case 'apply_diff':
+      case 'git_commit':
+        return { icon: '✏️', label: action.toolName, themeClass: 'theme-edit' };
+      case 'fetch_web_content':
+        return { icon: '🌐', label: 'fetch_web', themeClass: 'theme-web' };
+      default:
+        return { icon: '🛠️', label: action.toolName, themeClass: 'theme-tool' };
+    }
+  }
+  return { icon: '✦', label: 'Aktivitas', themeClass: 'theme-info' };
+}
+
 function renderChatProcess(processes: ChatProcessEntry[], running: boolean) {
+  const actions = aggregateAgentProcesses(processes);
   const container = document.createElement('div');
   container.className = `agent-trace-card${running ? ' trace-running' : ' trace-completed'}`;
 
@@ -967,31 +1210,46 @@ function renderChatProcess(processes: ChatProcessEntry[], running: boolean) {
     ? '<span class="pulse-ring"></span><span>AGENT RUNNING</span>'
     : '<span>✓ TRAJECTORY COMPLETE</span>';
 
+  const toolCount = actions.filter((a) => a.category === 'tool').length;
   const activeTitle = document.createElement('span');
   activeTitle.className = 'trace-title';
-  const latestProcess = processes[processes.length - 1];
   activeTitle.textContent = running
-    ? `${chatProcessIcon(latestProcess?.kind ?? 'thinking')} ${chatProcessLabel(latestProcess?.kind ?? 'thinking')} (Langkah ${processes.length})`
-    : `✦ Agent Trajectory (${processes.length} langkah aktivitas)`;
+    ? `⚡ Agent sedang bekerja (${actions.length} aktivitas)...`
+    : `✦ Agent Trajectory (${toolCount} eksekusi tool, ${actions.length} langkah total)`;
 
   headerLeft.append(statusIndicator, activeTitle);
 
   const headerRight = document.createElement('div');
   headerRight.className = 'trace-header-right';
 
-  // Copy Trajectory Log Button
+  // Executive Markdown Copy Trace Button
   const copyBtn = document.createElement('button');
   copyBtn.type = 'button';
   copyBtn.className = 'trace-copy-btn';
-  copyBtn.title = 'Salin ringkasan trajectory agent ke clipboard';
+  copyBtn.title = 'Salin ringkasan eksekutif trajectory agent';
   copyBtn.innerHTML = '<span>📋 Salin Log</span>';
   copyBtn.addEventListener('click', (e) => {
     e.stopPropagation();
-    const logLines = processes.map((p, idx) => {
-      const time = new Date(p.createdAt).toLocaleTimeString();
-      return `[${time}] Step ${idx + 1} (${p.kind.toUpperCase()}): ${p.text}`;
+    const markdownLines: string[] = [
+      '### ⚡ Smara Agent Execution Trace',
+      `*Total: ${toolCount} tool calls, ${actions.length} aktivitas.*`,
+      '',
+    ];
+
+    actions.forEach((a, idx) => {
+      const dur = a.endTime ? ` (${((a.endTime - a.startTime) / 1000).toFixed(1)}s)` : '';
+      if (a.category === 'tool') {
+        const preview = a.output ? ` → *${a.output.replace(/\n+/g, ' ').slice(0, 120)}*` : '';
+        markdownLines.push(`${idx + 1}. **${a.toolName}** \`${a.toolTarget || ''}\`${dur}${preview}`);
+      } else if (a.category === 'reasoning') {
+        const words = a.output?.trim().split(/\s+/).length || 0;
+        markdownLines.push(`${idx + 1}. 🧠 **Deep Reasoning** (${words} kata)${dur}`);
+      } else {
+        markdownLines.push(`${idx + 1}. ✦ **${a.title}**: ${a.output || ''}${dur}`);
+      }
     });
-    navigator.clipboard.writeText(logLines.join('\n\n')).then(() => {
+
+    navigator.clipboard.writeText(markdownLines.join('\n')).then(() => {
       copyBtn.innerHTML = '<span>✓ Tersalin</span>';
       setTimeout(() => {
         copyBtn.innerHTML = '<span>📋 Salin Log</span>';
@@ -1020,77 +1278,108 @@ function renderChatProcess(processes: ChatProcessEntry[], running: boolean) {
     toggleBtn.textContent = isCollapsed ? 'Detail Trajectory ▾' : 'Tutup ▴';
   });
 
-  const startTime = processes[0]?.createdAt ?? Date.now();
+  const startTime = actions[0]?.startTime ?? Date.now();
 
-  processes.forEach((process, index) => {
-    const isLast = index === processes.length - 1;
-    const isStepRunning = running && isLast;
+  actions.forEach((action, index) => {
+    const isLast = index === actions.length - 1;
+    const isActionRunning = running && isLast && action.status === 'running';
+    const badgeInfo = getActionCategoryBadge(action);
 
     const stepItem = document.createElement('div');
-    stepItem.className = `trace-step-item step-${process.kind.replace(/_/g, '-')}${isStepRunning ? ' step-active' : ''}`;
+    stepItem.className = `trace-action-card ${badgeInfo.themeClass}${isActionRunning ? ' action-running' : ' action-done'}`;
 
-    const stepIconCol = document.createElement('div');
-    stepIconCol.className = 'step-icon-col';
+    // Action Header
+    const actionHeader = document.createElement('div');
+    actionHeader.className = 'action-card-header';
 
-    const iconBadge = document.createElement('span');
-    iconBadge.className = `step-icon-badge ${isStepRunning ? 'badge-pulsing' : ''}`;
-    iconBadge.textContent = chatProcessIcon(process.kind);
+    const headerMain = document.createElement('div');
+    headerMain.className = 'action-header-main';
 
-    const stepLine = document.createElement('div');
-    stepLine.className = 'step-connector-line';
-    stepIconCol.append(iconBadge, stepLine);
+    const iconSpan = document.createElement('span');
+    iconSpan.className = `action-type-icon ${isActionRunning ? 'icon-pulsing' : ''}`;
+    iconSpan.textContent = badgeInfo.icon;
 
-    const stepContent = document.createElement('div');
-    stepContent.className = 'step-content';
+    const labelBadge = document.createElement('span');
+    labelBadge.className = 'action-label-badge';
+    labelBadge.textContent = badgeInfo.label;
 
-    const stepMeta = document.createElement('div');
-    stepMeta.className = 'step-meta';
+    headerMain.append(iconSpan, labelBadge);
 
-    const stepIndexBadge = document.createElement('span');
-    stepIndexBadge.className = 'step-index-badge';
-    stepIndexBadge.textContent = `Langkah ${index + 1}`;
-
-    const stepLabel = document.createElement('strong');
-    stepLabel.className = 'step-label';
-    stepLabel.textContent = chatProcessLabel(process.kind);
-
-    const stepTime = document.createElement('span');
-    stepTime.className = 'step-time';
-    const elapsedSec = ((process.createdAt - startTime) / 1000).toFixed(1);
-    stepTime.textContent = `+${elapsedSec}s`;
-
-    stepMeta.append(stepIndexBadge, stepLabel, stepTime);
-
-    const stepBody = document.createElement('div');
-    stepBody.className = 'step-body';
-
-    if (process.kind === 'reasoning') {
-      const wordCount = process.text.trim().split(/\s+/).filter(Boolean).length;
-      const reasoningHeader = document.createElement('div');
-      reasoningHeader.className = 'reasoning-header';
-      reasoningHeader.innerHTML = `<span>Deep Reasoning Stream</span><span class="reasoning-meta">${wordCount} kata</span>`;
-
-      const reasoningBox = document.createElement('div');
-      reasoningBox.className = 'step-reasoning-box';
-      reasoningBox.textContent = process.text;
-
-      stepBody.append(reasoningHeader, reasoningBox);
-    } else if (process.text.includes('```diff') || (process.text.includes('--- a/') && process.text.includes('+++ b/'))) {
-      const leadText = process.text.split('```diff')[0].trim();
-      if (leadText) {
-        const p = document.createElement('p');
-        p.textContent = leadText;
-        stepBody.append(p);
-      }
-      stepBody.append(renderDiffPreview(process.text));
-    } else if (process.text.startsWith('$ ') || process.text.includes('[Status: Exit')) {
-      stepBody.append(renderTerminalOutput(process.text));
-    } else {
-      stepBody.textContent = process.text;
+    if (action.toolTarget) {
+      const targetPill = document.createElement('code');
+      targetPill.className = 'action-target-pill';
+      targetPill.textContent = action.toolTarget;
+      targetPill.title = action.toolTarget;
+      headerMain.append(targetPill);
     }
 
-    stepContent.append(stepMeta, stepBody);
-    stepItem.append(stepIconCol, stepContent);
+    const headerMeta = document.createElement('div');
+    headerMeta.className = 'action-header-meta';
+
+    if (isActionRunning) {
+      const runningPill = document.createElement('span');
+      runningPill.className = 'action-status-pill pill-running';
+      runningPill.textContent = 'Memproses...';
+      headerMeta.append(runningPill);
+    } else if (action.status === 'error') {
+      const errPill = document.createElement('span');
+      errPill.className = 'action-status-pill pill-error';
+      errPill.textContent = '✕ Gagal';
+      headerMeta.append(errPill);
+    } else {
+      const donePill = document.createElement('span');
+      donePill.className = 'action-status-pill pill-done';
+      const durationMs = (action.endTime || Date.now()) - action.startTime;
+      donePill.textContent = `✓ ${(durationMs / 1000).toFixed(1)}s`;
+      headerMeta.append(donePill);
+    }
+
+    const chevron = document.createElement('span');
+    chevron.className = 'action-chevron';
+    chevron.textContent = '▾';
+    headerMeta.append(chevron);
+
+    actionHeader.append(headerMain, headerMeta);
+    stepItem.append(actionHeader);
+
+    // Action Drawer / Content
+    const actionDrawer = document.createElement('div');
+    actionDrawer.className = 'action-drawer';
+    if (!isActionRunning && actions.length > 3 && index < actions.length - 2) {
+      actionDrawer.classList.add('drawer-collapsed');
+      chevron.textContent = '▸';
+    }
+
+    actionHeader.addEventListener('click', () => {
+      const isColl = actionDrawer.classList.toggle('drawer-collapsed');
+      chevron.textContent = isColl ? '▸' : '▾';
+    });
+
+    if (action.category === 'reasoning') {
+      const rawText = action.output || '';
+      const wordCount = rawText.trim().split(/\s+/).filter(Boolean).length;
+      const reasoningBox = document.createElement('div');
+      reasoningBox.className = 'step-reasoning-box';
+      reasoningBox.innerHTML = `<div class="reasoning-meta-bar"><span>🧠 Deep Reasoning Stream</span><span>${wordCount} kata</span></div><div class="reasoning-text">${rawText}</div>`;
+      actionDrawer.append(reasoningBox);
+    } else if (action.output) {
+      if (action.toolName === 'list_dir' && !action.output.includes('Error')) {
+        actionDrawer.append(renderFileListPreview(action.output));
+      } else if (action.output.includes('```diff') || (action.output.includes('--- a/') && action.output.includes('+++ b/'))) {
+        actionDrawer.append(renderDiffPreview(action.output));
+      } else if (action.toolName === 'run_command' || action.output.startsWith('$ ') || action.output.includes('[Status: Exit')) {
+        actionDrawer.append(renderTerminalOutput(action.output));
+      } else if (action.toolName === 'read_file' || action.toolName === 'view_file') {
+        actionDrawer.append(renderCodePreview(action.output, action.toolTarget));
+      } else {
+        const textPre = document.createElement('pre');
+        textPre.className = 'action-generic-output';
+        textPre.textContent = action.output;
+        actionDrawer.append(textPre);
+      }
+    }
+
+    stepItem.append(actionDrawer);
     timeline.append(stepItem);
   });
 
