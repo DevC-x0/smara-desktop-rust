@@ -50,12 +50,22 @@ pub struct DesktopChatAttachment {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ChatProcessEntry {
+    pub kind: String,
+    pub text: String,
+    #[serde(default)]
+    pub created_at: u128,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct DesktopChatMessage {
     pub id: String,
     pub role: String,
     pub content: String,
     #[serde(default)]
     pub attachments: Vec<DesktopChatAttachment>,
+    #[serde(default)]
+    pub processes: Vec<ChatProcessEntry>,
     pub created_at_ms: u128,
 }
 
@@ -790,7 +800,7 @@ fn send_chat_with(
     path: &Path,
     request: SendChatRequest,
     memories: Vec<DesktopMemory>,
-    completion: impl FnOnce(&[DesktopChatMessage], &[DesktopMemory]) -> Result<String, String>,
+    completion: impl FnOnce(&[DesktopChatMessage], &[DesktopMemory]) -> Result<(String, Vec<ChatProcessEntry>), String>,
 ) -> Result<DesktopChatSession, String> {
     let message = request.message.trim();
     validate_attachments(&request.attachments)?;
@@ -827,14 +837,16 @@ fn send_chat_with(
         role: "user".to_string(),
         content: message.to_string(),
         attachments: request.attachments,
+        processes: Vec::new(),
         created_at_ms: timestamp,
     });
-    let response = completion(&session.messages, &memories)?;
+    let (response, processes) = completion(&session.messages, &memories)?;
     session.messages.push(DesktopChatMessage {
         id: format!("message-{}-assistant", now_ms()),
         role: "assistant".to_string(),
         content: response,
         attachments: Vec::new(),
+        processes,
         created_at_ms: now_ms(),
     });
     if session.messages.len() > MAX_MESSAGES_PER_SESSION {
@@ -857,7 +869,8 @@ fn send_chat_at(
     memories: Vec<DesktopMemory>,
 ) -> Result<DesktopChatSession, String> {
     send_chat_with(path, request, memories, |messages, memories| {
-        request_completion(config, messages, memories)
+        let content = request_completion(config, messages, memories)?;
+        Ok((content, Vec::new()))
     })
 }
 
@@ -933,15 +946,28 @@ pub async fn stream_desktop_chat(
         .filter(|id| !id.trim().is_empty())
         .ok_or_else(|| "Streaming Chat requires request_id.".to_string())?;
     state.reset(&request_id)?;
-    emit_chat_stream_event(
+    let recorded_processes = Arc::new(Mutex::new(Vec::new()));
+    let rec_for_pre = recorded_processes.clone();
+    let emit_and_record = move |app_handle: &AppHandle, req_id: &str, kind: &str, delta: String| {
+        if let Ok(mut procs) = rec_for_pre.lock() {
+            procs.push(ChatProcessEntry {
+                kind: kind.to_string(),
+                text: delta.clone(),
+                created_at: now_ms(),
+            });
+        }
+        emit_chat_stream_event(app_handle, req_id, kind, delta);
+    };
+
+    emit_and_record(
         &app,
         &request_id,
         "thinking",
-        "Menyiapkan sesi agen, memuat protokol AGENTS.md, dan konfigurasi lingkungan.",
+        "Menyiapkan sesi agen, memuat protokol AGENTS.md, dan konfigurasi lingkungan.".to_string(),
     );
     if let Some(scan) = workspace_scan_context(&request.message) {
         let first_line = scan.lines().next().unwrap_or("Local Workspace Scan");
-        emit_chat_stream_event(
+        emit_and_record(
             &app,
             &request_id,
             "explore",
@@ -950,7 +976,7 @@ pub async fn stream_desktop_chat(
     }
     let memories = relevant_memories_scoped(&app, &request.message, request.workspace.as_deref(), 5)?;
     if !memories.is_empty() {
-        emit_chat_stream_event(
+        emit_and_record(
             &app,
             &request_id,
             "memory",
@@ -962,7 +988,7 @@ pub async fn stream_desktop_chat(
     }
     let path = chat_path(&app)?;
     let config = load_provider_config(&app)?;
-    emit_chat_stream_event(
+    emit_and_record(
         &app,
         &request_id,
         "tool_start",
@@ -975,6 +1001,7 @@ pub async fn stream_desktop_chat(
     let request_id_for_cancel = request_id.clone();
     let request_id_for_finish = request_id.clone();
     let request_id_for_done = request_id.clone();
+    let rec_for_blocking = recorded_processes.clone();
     tauri::async_runtime::spawn_blocking(move || {
         let session = send_chat_with(&path, request, memories, |initial_messages, memories| {
             let home = std::env::var("HOME").unwrap_or_else(|_| "/home/cahya".to_string());
@@ -1059,11 +1086,19 @@ pub async fn stream_desktop_chat(
                     }));
 
                     for tc in stream_out.tool_calls {
+                        let tool_start_msg = format!("🛠️ Eksekusi Tool: `{}` ({})", tc.name, tc.arguments);
+                        if let Ok(mut procs) = rec_for_blocking.lock() {
+                            procs.push(ChatProcessEntry {
+                                kind: "tool_start".to_string(),
+                                text: tool_start_msg.clone(),
+                                created_at: now_ms(),
+                            });
+                        }
                         emit_chat_stream_event(
                             &event_app_for_done,
                             &request_id_for_done,
                             "tool_start",
-                            format!("🛠️ Eksekusi Tool: `{}` ({})", tc.name, tc.arguments),
+                            tool_start_msg,
                         );
 
                         let parsed_args: Value = serde_json::from_str(&tc.arguments)
@@ -1087,31 +1122,34 @@ pub async fn stream_desktop_chat(
                             approval,
                         });
 
-                        let output_text = match exec_result {
+                        let (output_text, log_kind, log_text) = match exec_result {
                             Ok(res) => {
                                 let preview = if res.output.len() > 160 {
                                     format!("{}...", &res.output[..160])
                                 } else {
                                     res.output.clone()
                                 };
-                                emit_chat_stream_event(
-                                    &event_app_for_done,
-                                    &request_id_for_done,
-                                    "tool_done",
-                                    format!("✓ Hasil `{}`: {}", tc.name, preview.trim()),
-                                );
-                                res.output
+                                let msg = format!("✓ Hasil `{}`: {}", tc.name, preview.trim());
+                                (res.output, "tool_done", msg)
                             }
                             Err(err) => {
-                                emit_chat_stream_event(
-                                    &event_app_for_done,
-                                    &request_id_for_done,
-                                    "error",
-                                    format!("✕ Gagal `{}`: {}", tc.name, err),
-                                );
-                                format!("Error executing tool {}: {}", tc.name, err)
+                                let msg = format!("✕ Gagal `{}`: {}", tc.name, err);
+                                (format!("Error executing tool {}: {}", tc.name, err), "error", msg)
                             }
                         };
+                        if let Ok(mut procs) = rec_for_blocking.lock() {
+                            procs.push(ChatProcessEntry {
+                                kind: log_kind.to_string(),
+                                text: log_text.clone(),
+                                created_at: now_ms(),
+                            });
+                        }
+                        emit_chat_stream_event(
+                            &event_app_for_done,
+                            &request_id_for_done,
+                            log_kind,
+                            log_text,
+                        );
 
                         dynamic_messages.push(json!({
                             "role": "tool",
@@ -1132,11 +1170,19 @@ pub async fn stream_desktop_chat(
             }
 
             if final_content.trim().is_empty() {
+                let synth_msg = "Mensintesis seluruh temuan investigasi dan merumuskan analisis lengkap...".to_string();
+                if let Ok(mut procs) = rec_for_blocking.lock() {
+                    procs.push(ChatProcessEntry {
+                        kind: "thinking".to_string(),
+                        text: synth_msg.clone(),
+                        created_at: now_ms(),
+                    });
+                }
                 emit_chat_stream_event(
                     &event_app_for_done,
                     &request_id_for_done,
                     "thinking",
-                    "Mensintesis seluruh temuan investigasi dan merumuskan analisis lengkap...",
+                    synth_msg,
                 );
                 let event_app_for_thinking = event_app_for_delta.clone();
                 let req_id_for_thinking = request_id_for_cancel.clone();
@@ -1177,7 +1223,25 @@ pub async fn stream_desktop_chat(
             if final_content.trim().is_empty() {
                 final_content = "Selesai memproses aksi dan investigasi workspace.".to_string();
             }
-            Ok(final_content)
+            let complete_msg = "Respons selesai dan tersimpan di sesi lokal.".to_string();
+            if let Ok(mut procs) = rec_for_blocking.lock() {
+                procs.push(ChatProcessEntry {
+                    kind: "complete".to_string(),
+                    text: complete_msg.clone(),
+                    created_at: now_ms(),
+                });
+            }
+            emit_chat_stream_event(
+                &event_app_for_done,
+                &request_id_for_done,
+                "complete",
+                complete_msg,
+            );
+            let final_procs = rec_for_blocking
+                .lock()
+                .map(|guard| guard.clone())
+                .unwrap_or_default();
+            Ok((final_content, final_procs))
         })?;
         for event in learn_from_desktop_chat(&learning_app, &config, &session).unwrap_or_default() {
             emit_chat_stream_event(&learning_app, &request_id_for_done, &event.kind, event.text);
@@ -1233,6 +1297,7 @@ mod tests {
             role: "user".to_string(),
             content: "Explain this".to_string(),
             attachments: vec![attachment],
+            processes: Vec::new(),
             created_at_ms: now_ms(),
         };
 
@@ -1346,6 +1411,7 @@ mod tests {
                 role: "user".to_string(),
                 content: "anthropic hello".to_string(),
                 attachments: Vec::new(),
+                processes: Vec::new(),
                 created_at_ms: now_ms(),
             }],
             &[],

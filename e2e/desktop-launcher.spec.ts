@@ -124,7 +124,19 @@ async function installMockTauri(
             messages: [
               ...(existing?.messages ?? []),
               { id: 'user-stream', role: 'user', content: args.request.message, attachments: args.request.attachments ?? [], created_at_ms: timestamp },
-              { id: 'assistant-stream', role: 'assistant', content: 'native streaming reply', created_at_ms: timestamp },
+              {
+                id: 'assistant-stream',
+                role: 'assistant',
+                content: 'native streaming reply',
+                processes: [
+                  { kind: 'thinking', text: 'Mock thinking', created_at: timestamp },
+                  { kind: 'analysis', text: 'Mock analysis', created_at: timestamp },
+                  { kind: 'tool_start', text: 'Provider call: mock', created_at: timestamp },
+                  { kind: 'tool_done', text: 'Provider stream done', created_at: timestamp },
+                  { kind: 'complete', text: 'Respons selesai dan tersimpan di sesi lokal.', created_at: timestamp },
+                ],
+                created_at_ms: timestamp,
+              },
             ],
             memory_context_count: window.__SMARA_MEMORIES__.length ? 1 : 0,
           };
@@ -869,4 +881,35 @@ test('supports moving chat sessions between folders', async ({ page }) => {
   const vpsGroup = page.locator('.sidebar-workspace-group', { hasText: 'Workspace-VPS' });
   await expect(vpsGroup.locator('.sidebar-chat-session-btn')).toContainText('sesi pertama di general');
 });
+
+test('persists agent execution trajectory in chat session and renders on session switch', async ({ page }) => {
+  await installMockTauri(page);
+  await page.goto('/');
+
+  await openDesktopPage(page, 'chat');
+
+  // Send message that triggers streaming
+  await page.locator('#chat-input').fill('cek vps saya');
+  await page.locator('#send-chat-button').click();
+  await expect(page.locator('.chat-message-assistant')).toBeVisible();
+
+  // Agent tree should be visible in chat
+  const agentTree = page.locator('.agent-tree-container');
+  await expect(agentTree).toBeVisible();
+  await expect(agentTree.locator('.agent-tree-root')).toContainText('Worked for');
+
+  // Create a second session
+  await page.locator('#sidebar-new-chat-button').click();
+  await page.locator('#chat-input').fill('pertanyaan kedua');
+  await page.locator('#send-chat-button').click();
+  await expect(page.locator('.chat-message-assistant')).toBeVisible();
+
+  // Switch back to the first session 'cek vps saya'
+  await page.locator('.sidebar-chat-session-btn').filter({ hasText: 'cek vps saya' }).click();
+
+  // Verify agent tree is still fully present and rendered from message.processes
+  await expect(page.locator('.agent-tree-container')).toBeVisible();
+  await expect(page.locator('.agent-tree-root')).toContainText('Worked for');
+});
+
 

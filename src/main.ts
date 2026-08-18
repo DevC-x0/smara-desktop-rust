@@ -90,6 +90,7 @@ type DesktopChatMessage = {
   role: string;
   content: string;
   attachments?: DesktopChatAttachment[];
+  processes?: ChatProcessEntry[];
   created_at_ms: number;
 };
 
@@ -1202,7 +1203,9 @@ function renderChatMessages() {
   const sessionProcessHistory = chatProcessHistory.get(session.id);
   const messageNodes: HTMLElement[] = [];
   for (const message of session.messages) {
-    const historicalProcesses = sessionProcessHistory?.get(message.id) ?? [];
+    const historicalProcesses = (message.processes && message.processes.length > 0)
+      ? message.processes
+      : (sessionProcessHistory?.get(message.id) ?? []);
     if (historicalProcesses.length > 0) {
       messageNodes.push(renderChatProcess(historicalProcesses, false));
     }

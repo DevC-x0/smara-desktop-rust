@@ -238,6 +238,7 @@ fn generate_skill_request(
         role: "user".to_string(),
         content: instruction,
         attachments: Vec::new(),
+        processes: Vec::new(),
         created_at_ms: now_ms(),
     };
     let output = request_completion(config, &[message], &[])?;
