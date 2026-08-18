@@ -1737,13 +1737,9 @@ function renderChatProcess(processes: ChatProcessEntry[], running: boolean) {
     actionHeader.append(headerMain, headerMeta);
     stepItem.append(actionHeader);
 
-    // Action Drawer / Content
+    // Action Drawer / Content - Keep expanded by default so execution details remain visible
     const actionDrawer = document.createElement('div');
     actionDrawer.className = 'action-drawer';
-    if (!isActionRunning && actions.length > 3 && index < actions.length - 2) {
-      actionDrawer.classList.add('drawer-collapsed');
-      chevron.textContent = '▸';
-    }
 
     actionHeader.addEventListener('click', () => {
       const isColl = actionDrawer.classList.toggle('drawer-collapsed');
