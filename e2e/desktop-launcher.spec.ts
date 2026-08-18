@@ -475,7 +475,7 @@ test('keeps long chat transcripts scrollable while composer stays visible', asyn
   await expect(page.locator('#chat-form')).toBeVisible();
 
   await page.locator('#chat-messages').evaluate((element) => { element.scrollTop = 0; });
-  await page.locator('#chat-messages').hover();
+  await page.locator('.chat-message-user').first().hover();
   await page.mouse.wheel(0, 600);
   await expect.poll(() => page.locator('#chat-messages').evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
 });
@@ -711,4 +711,34 @@ test('imports searches inspects and deletes native media', async ({ page }) => {
   await expect(page.locator('#media-preview audio')).toHaveCount(1);
   await page.locator('#media-list .danger-button').click();
   await expect(page.locator('#media-list .automation-item')).toHaveCount(0);
+});
+
+test('renders natural agent tree with clean hierarchy and collapsible drawers', async ({ page }) => {
+  await installMockTauri(page);
+  await page.goto('/');
+  await openDesktopPage(page, 'chat');
+
+  await page.locator('#chat-input').fill('analisis codebase dan cek unit test');
+  await page.locator('#send-chat-button').click();
+
+  // Root header should render natural "Worked for Xs ⌄"
+  const treeContainer = page.locator('.agent-tree-container');
+  await expect(treeContainer).toBeVisible();
+  await expect(treeContainer.locator('.agent-tree-root')).toContainText('Worked for');
+
+  // Verify tree body has action rows
+  const treeBody = treeContainer.locator('.agent-tree-body');
+  await expect(treeBody).toBeVisible();
+  const rowCount = await treeBody.locator('.agent-tree-row').count();
+  expect(rowCount).toBeGreaterThanOrEqual(3);
+
+  // Test root collapse and expand
+  await treeContainer.locator('.agent-tree-root').click();
+  await expect(treeBody).toHaveClass(/collapsed/);
+  await treeContainer.locator('.agent-tree-root').click();
+  await expect(treeBody).not.toHaveClass(/collapsed/);
+
+  // Test copy button
+  await treeContainer.locator('.tree-copy-btn').click();
+  await expect(treeContainer.locator('.tree-copy-btn')).toContainText('✓');
 });

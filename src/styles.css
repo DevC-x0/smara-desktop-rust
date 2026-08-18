@@ -1106,298 +1106,224 @@ input, textarea, select {
   color: var(--text-main);
 }
 
-/* Antigravity / Codex Interactive Agent Execution Trace */
-.agent-trace-card {
-  background: #0C110C;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: var(--radius-md);
-  margin: 6px 0 12px;
-  overflow: hidden;
+/* ==========================================================================
+   Natural Agent Thought & Action Tree (Cursor / Antigravity Style)
+   ========================================================================== */
+
+.agent-tree-container {
+  margin: 6px 0 14px 0;
+  font-family: var(--font-sans);
+  font-size: 13px;
+  color: #94A3B8;
   max-width: 860px;
   width: 100%;
-  min-height: 44px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
-  transition: all 180ms ease;
 }
 
-.agent-trace-card.trace-running {
-  border-color: rgba(190, 242, 100, 0.35);
-  background: rgba(190, 242, 100, 0.03);
-  box-shadow: 0 0 20px rgba(190, 242, 100, 0.08);
-}
-
-.trace-header {
-  display: flex;
+.agent-tree-root-wrapper {
+  display: inline-flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 10px 14px;
-  background: rgba(255, 255, 255, 0.02);
-  border-bottom: 1px solid var(--border);
-  user-select: none;
+  gap: 8px;
 }
 
-.trace-header-left {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.trace-pulse-badge {
-  display: flex;
+.agent-tree-root {
+  display: inline-flex;
   align-items: center;
   gap: 6px;
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  background: rgba(190, 242, 100, 0.12);
-  border: 1px solid rgba(190, 242, 100, 0.28);
-  color: var(--accent);
-  padding: 2px 7px;
-  border-radius: 12px;
+  padding: 3px 6px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  color: #94A3B8;
+  user-select: none;
+  transition: all 120ms ease;
 }
 
-.pulse-ring {
+.agent-tree-root:hover {
+  color: #E2E8F0;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.tree-dot-pulse {
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: var(--accent);
-  box-shadow: 0 0 8px var(--accent);
+  background: #38BDF8;
+  box-shadow: 0 0 6px #38BDF8;
   animation: pulse-ring 1.4s infinite cubic-bezier(0.25, 1, 0.5, 1);
 }
 
-@keyframes pulse-ring {
-  0% { transform: scale(0.9); opacity: 1; }
-  50% { transform: scale(1.3); opacity: 0.6; }
-  100% { transform: scale(0.9); opacity: 1; }
-}
-
-.trace-done-badge {
+.tree-root-chevron {
   font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid var(--border);
-  color: var(--text-muted);
-  padding: 2px 7px;
-  border-radius: 12px;
+  color: #64748B;
+  transition: transform 150ms ease;
+  margin-left: 2px;
 }
 
-.trace-title {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text-main);
-  letter-spacing: -0.01em;
-}
-
-.trace-header-right {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.trace-copy-btn {
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  color: var(--text-muted);
+.tree-copy-btn {
+  background: transparent;
+  border: none;
+  color: #64748B;
   font-size: 11px;
-  font-weight: 500;
-  padding: 3px 8px;
+  padding: 2px 4px;
+  border-radius: 3px;
   cursor: pointer;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  transition: all 120ms ease;
+  opacity: 0.6;
+  transition: opacity 120ms ease, color 120ms ease;
 }
 
-.trace-copy-btn:hover {
-  background: rgba(255, 255, 255, 0.09);
-  color: var(--text-main);
-  border-color: rgba(255, 255, 255, 0.18);
+.tree-copy-btn:hover {
+  opacity: 1;
+  color: #E2E8F0;
 }
 
-.trace-toggle-btn {
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  color: var(--text-muted);
-  font-size: 11px;
-  font-weight: 500;
-  padding: 3px 8px;
-  cursor: pointer;
-  transition: all 120ms ease;
-}
-
-.trace-toggle-btn:hover {
-  background: rgba(255, 255, 255, 0.08);
-  color: var(--text-main);
-}
-
-/* Unified Trace Action Cards */
-.trace-timeline {
-  max-height: 440px;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  padding: 12px 14px;
+.agent-tree-body {
+  margin-top: 4px;
+  margin-left: 8px;
+  padding-left: 12px;
+  border-left: 1px solid rgba(255, 255, 255, 0.08);
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  background: #070B07;
-  border-top: 1px solid var(--border);
+  gap: 4px;
+  max-height: 480px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   scrollbar-width: thin;
-  scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+  scrollbar-color: rgba(255, 255, 255, 0.15) transparent;
 }
 
-.trace-timeline::-webkit-scrollbar {
-  width: 6px;
+.agent-tree-body::-webkit-scrollbar {
+  width: 5px;
 }
 
-.trace-timeline::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.trace-timeline::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.18);
+.agent-tree-body::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
   border-radius: 3px;
 }
 
-.trace-timeline::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.3);
-}
-
-.trace-timeline.collapsed {
+.agent-tree-body.collapsed {
   display: none;
 }
 
-.trace-action-card {
-  background: rgba(255, 255, 255, 0.02);
-  border: 1px solid rgba(255, 255, 255, 0.07);
-  border-radius: 6px;
-  overflow: hidden;
-  transition: all 150ms cubic-bezier(0.16, 1, 0.3, 1);
+.agent-tree-item {
+  display: flex;
+  flex-direction: column;
 }
 
-.trace-action-card:hover {
-  border-color: rgba(255, 255, 255, 0.14);
-  background: rgba(255, 255, 255, 0.035);
-}
-
-.trace-action-card.action-running {
-  border-color: rgba(190, 242, 100, 0.35);
-  box-shadow: 0 0 16px -2px rgba(190, 242, 100, 0.08);
-  background: rgba(190, 242, 100, 0.03);
-}
-
-.action-card-header {
+.agent-tree-row {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 7px 12px;
+  gap: 6px;
+  padding: 3px 6px;
+  border-radius: 4px;
+  font-size: 12.5px;
+  color: #94A3B8;
+  cursor: default;
+  transition: all 100ms ease;
+  user-select: text;
+}
+
+.agent-tree-row.has-drawer {
   cursor: pointer;
-  user-select: none;
-  gap: 8px;
 }
 
-.action-header-main {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-  flex: 1;
+.agent-tree-row.has-drawer:hover {
+  background: rgba(255, 255, 255, 0.035);
+  color: #E2E8F0;
 }
 
-.action-type-icon {
-  font-size: 13px;
-  line-height: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+.tree-action-verb {
+  color: #64748B;
+  font-weight: 400;
 }
 
-.action-type-icon.icon-pulsing {
-  animation: pulse-ring 1.4s infinite cubic-bezier(0.25, 1, 0.5, 1);
-}
-
-.action-label-badge {
+.ext-badge {
   font-size: 10px;
   font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  padding: 1px 6px;
-  border-radius: 4px;
   font-family: var(--font-mono);
-  background: rgba(255, 255, 255, 0.06);
-  color: var(--text-main);
-  white-space: nowrap;
+  padding: 0 4px;
+  border-radius: 3px;
+  line-height: 14px;
+  letter-spacing: 0.02em;
 }
 
-/* Category Themes */
-.theme-read .action-label-badge { background: rgba(56, 189, 248, 0.15); color: #38BDF8; }
-.theme-browse .action-label-badge { background: rgba(167, 139, 250, 0.15); color: #A78BFA; }
-.theme-terminal .action-label-badge { background: rgba(190, 242, 100, 0.15); color: #BEF264; }
-.theme-edit .action-label-badge { background: rgba(251, 191, 36, 0.15); color: #FBBF24; }
-.theme-web .action-label-badge { background: rgba(45, 212, 191, 0.15); color: #2DD4BF; }
-.theme-reasoning .action-label-badge { background: rgba(236, 72, 153, 0.15); color: #F472B6; }
-.theme-context .action-label-badge { background: rgba(148, 163, 184, 0.15); color: #94A3B8; }
+.ext-badge-ts { background: rgba(56, 189, 248, 0.12); color: #38BDF8; }
+.ext-badge-js { background: rgba(250, 204, 21, 0.12); color: #FACC15; }
+.ext-badge-rs { background: rgba(251, 146, 60, 0.12); color: #FB923C; }
+.ext-badge-json { background: rgba(245, 158, 11, 0.12); color: #F59E0B; }
+.ext-badge-md { background: rgba(167, 139, 250, 0.12); color: #A78BFA; }
+.ext-badge-sh { background: rgba(74, 222, 128, 0.12); color: #4ADE80; }
+.ext-badge-css, .ext-badge-html { background: rgba(45, 212, 191, 0.12); color: #2DD4BF; }
+.ext-badge-py { background: rgba(96, 165, 250, 0.12); color: #60A5FA; }
+.ext-badge-toml { background: rgba(232, 121, 249, 0.12); color: #E879F9; }
+.ext-badge-file { background: rgba(148, 163, 184, 0.12); color: #94A3B8; }
 
-.action-target-pill {
+.tree-target {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: #CBD5E1;
+}
+
+.tree-line-meta {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: #64748B;
+}
+
+.tree-diff-stats {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  margin-left: 4px;
+}
+
+.diff-add {
+  font-weight: 600;
+  color: #4ADE80;
+}
+
+.diff-del {
+  font-weight: 600;
+  color: #F87171;
+}
+
+.tree-cmd {
   font-family: var(--font-mono);
   font-size: 11.5px;
   color: #E2E8F0;
-  background: rgba(0, 0, 0, 0.35);
-  padding: 2px 7px;
-  border-radius: 4px;
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  white-space: nowrap;
+  background: rgba(255, 255, 255, 0.04);
+  padding: 1px 5px;
+  border-radius: 3px;
+  max-width: 600px;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 320px;
+  white-space: nowrap;
 }
 
-.action-header-meta {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-shrink: 0;
-}
-
-.action-status-pill {
+.tree-item-chevron {
   font-size: 10px;
-  font-weight: 600;
-  padding: 1px 6px;
-  border-radius: 10px;
-  font-family: var(--font-mono);
-}
-
-.action-status-pill.pill-running {
-  background: rgba(190, 242, 100, 0.15);
-  color: var(--accent);
-}
-
-.action-status-pill.pill-done {
-  background: rgba(255, 255, 255, 0.05);
-  color: var(--text-faint);
-}
-
-.action-status-pill.pill-error {
-  background: rgba(248, 113, 113, 0.15);
-  color: var(--danger);
-}
-
-.action-chevron {
-  font-size: 11px;
-  color: var(--text-faint);
+  color: #64748B;
+  margin-left: auto;
   transition: transform 120ms ease;
 }
 
-.action-drawer {
-  padding: 0 12px 10px 12px;
-  border-top: 1px solid rgba(255, 255, 255, 0.04);
-  background: rgba(0, 0, 0, 0.2);
+.agent-tree-drawer {
+  margin: 4px 0 6px 12px;
+  border-radius: 6px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: #060906;
 }
 
-.action-drawer.drawer-collapsed {
+.agent-tree-drawer.drawer-collapsed {
   display: none;
+}
+
+.step-reasoning-box {
+  padding: 8px 12px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #94A3B8;
+  background: rgba(0, 0, 0, 0.25);
 }
 
 /* File List Chips Grid */

@@ -1517,46 +1517,38 @@ function renderTerminalOutput(text: string): HTMLElement {
   return container;
 }
 
-function getActionCategoryBadge(action: UnifiedAgentAction): { icon: string; label: string; themeClass: string } {
-  if (action.category === 'reasoning') {
-    return { icon: '🧠', label: 'Reasoning', themeClass: 'theme-reasoning' };
+function getFileExtensionBadge(pathOrFilename: string): { ext: string; className: string } {
+  const clean = pathOrFilename.replace(/['"`]/g, '').trim();
+  const match = clean.match(/\.([a-zA-Z0-9_-]+)(?:#|:|\?|$)/);
+  const ext = match ? match[1].toLowerCase() : '';
+  switch (ext) {
+    case 'ts':
+    case 'tsx':
+      return { ext: 'ts', className: 'ext-badge-ts' };
+    case 'js':
+    case 'jsx':
+      return { ext: 'js', className: 'ext-badge-js' };
+    case 'rs':
+      return { ext: 'rs', className: 'ext-badge-rs' };
+    case 'json':
+      return { ext: 'json', className: 'ext-badge-json' };
+    case 'md':
+      return { ext: 'md', className: 'ext-badge-md' };
+    case 'sh':
+    case 'bash':
+      return { ext: 'sh', className: 'ext-badge-sh' };
+    case 'css':
+    case 'html':
+      return { ext: ext, className: 'ext-badge-css' };
+    case 'py':
+      return { ext: 'py', className: 'ext-badge-py' };
+    case 'toml':
+    case 'yaml':
+    case 'yml':
+      return { ext: ext, className: 'ext-badge-toml' };
+    default:
+      return { ext: ext || 'file', className: 'ext-badge-file' };
   }
-  if (action.category === 'context') {
-    return { icon: '🔍', label: 'Context', themeClass: 'theme-context' };
-  }
-  if (action.category === 'tool' && action.toolName) {
-    switch (action.toolName) {
-      case 'read_file':
-      case 'view_file':
-        return { icon: '📄', label: 'read_file', themeClass: 'theme-read' };
-      case 'list_dir':
-      case 'search_path':
-      case 'glob':
-      case 'analyze_workspace':
-        return { icon: '📂', label: action.toolName, themeClass: 'theme-browse' };
-      case 'run_command':
-        return { icon: '💻', label: 'run_command', themeClass: 'theme-terminal' };
-      case 'edit_file':
-      case 'write_file':
-      case 'apply_diff':
-      case 'git_commit':
-        return { icon: '✏️', label: action.toolName, themeClass: 'theme-edit' };
-      case 'fetch_web_content':
-      case 'search_web':
-        return { icon: '🌐', label: action.toolName, themeClass: 'theme-web' };
-      case 'get_code_stats':
-        return { icon: '📊', label: 'get_code_stats', themeClass: 'theme-stats' };
-      case 'get_process_logs':
-      case 'create_terminal':
-      case 'kill_process':
-        return { icon: '📟', label: action.toolName, themeClass: 'theme-terminal' };
-      case 'query_code_graph':
-        return { icon: '🕸️', label: 'query_code_graph', themeClass: 'theme-context' };
-      default:
-        return { icon: '🛠️', label: action.toolName, themeClass: 'theme-tool' };
-    }
-  }
-  return { icon: '✦', label: 'Aktivitas', themeClass: 'theme-info' };
 }
 
 function renderChatProcess(processes: ChatProcessEntry[], running: boolean) {
@@ -1566,56 +1558,62 @@ function renderChatProcess(processes: ChatProcessEntry[], running: boolean) {
       actions = [{
         id: 'action-init',
         category: 'info',
-        title: 'Inisialisasi Agen',
+        title: 'Inisialisasi',
         status: 'running',
-        output: 'Menyiapkan sesi agen dan memuat konteks lingkungan...',
+        output: 'Menyiapkan sesi agen...',
         startTime: Date.now(),
       }];
     } else {
       actions = [{
         id: 'action-done',
         category: 'info',
-        title: 'Trajectory Selesai',
+        title: 'Selesai',
         status: 'completed',
-        output: 'Respons selesai dieksekusi.',
+        output: 'Respons selesai.',
         startTime: Date.now(),
       }];
     }
   }
+
   const container = document.createElement('div');
-  container.className = `chat-process agent-trace-card${running ? ' trace-running' : ' trace-completed'}`;
+  container.className = `chat-process agent-tree-container${running ? ' tree-running' : ' tree-completed'}`;
 
-  // Trace Header Bar
-  const header = document.createElement('div');
-  header.className = 'trace-header';
+  const firstStart = actions[0]?.startTime ?? Date.now();
+  const lastEnd = actions[actions.length - 1]?.endTime || Date.now();
+  const totalSec = Math.max(1, Math.round((lastEnd - firstStart) / 1000));
 
-  const headerLeft = document.createElement('div');
-  headerLeft.className = 'trace-header-left';
+  // Root Header: "Worked for Xs ⌄" or "Working for Xs ⌄"
+  const rootWrapper = document.createElement('div');
+  rootWrapper.className = 'agent-tree-root-wrapper';
 
-  const statusIndicator = document.createElement('span');
-  statusIndicator.className = running ? 'trace-pulse-badge' : 'trace-done-badge';
-  statusIndicator.innerHTML = running
-    ? '<span class="pulse-ring"></span><span>AGENT RUNNING</span>'
-    : '<span>✓ TRAJECTORY COMPLETE</span>';
+  const rootHeader = document.createElement('div');
+  rootHeader.className = 'agent-tree-root';
+  rootHeader.role = 'button';
+  rootHeader.tabIndex = 0;
 
+  if (running) {
+    const pulseDot = document.createElement('span');
+    pulseDot.className = 'tree-dot-pulse';
+    rootHeader.append(pulseDot);
+  }
+
+  const rootText = document.createElement('span');
+  rootText.className = 'tree-status-text';
+  rootText.textContent = running ? `Working for ${totalSec}s` : `Worked for ${totalSec}s`;
+  rootHeader.append(rootText);
+
+  const rootChevron = document.createElement('span');
+  rootChevron.className = 'tree-root-chevron';
+  rootChevron.textContent = '⌄';
+  rootHeader.append(rootChevron);
+
+  // Copy Log Button
   const toolCount = actions.filter((a) => a.category === 'tool').length;
-  const activeTitle = document.createElement('span');
-  activeTitle.className = 'trace-title';
-  activeTitle.textContent = running
-    ? `⚡ Agent sedang bekerja (${actions.length} aktivitas)...`
-    : `✦ Agent Trajectory (${toolCount} eksekusi tool, ${actions.length} langkah total)`;
-
-  headerLeft.append(statusIndicator, activeTitle);
-
-  const headerRight = document.createElement('div');
-  headerRight.className = 'trace-header-right';
-
-  // Executive Markdown Copy Trace Button
   const copyBtn = document.createElement('button');
   copyBtn.type = 'button';
-  copyBtn.className = 'trace-copy-btn';
-  copyBtn.title = 'Salin ringkasan eksekutif trajectory agent';
-  copyBtn.innerHTML = '<span>📋 Salin Log</span>';
+  copyBtn.className = 'tree-copy-btn';
+  copyBtn.title = 'Salin ringkasan log aktivitas agen';
+  copyBtn.innerHTML = '<span>📋</span>';
   copyBtn.addEventListener('click', (e) => {
     e.stopPropagation();
     const markdownLines: string[] = [
@@ -1623,7 +1621,6 @@ function renderChatProcess(processes: ChatProcessEntry[], running: boolean) {
       `*Total: ${toolCount} tool calls, ${actions.length} aktivitas.*`,
       '',
     ];
-
     actions.forEach((a, idx) => {
       const dur = a.endTime ? ` (${((a.endTime - a.startTime) / 1000).toFixed(1)}s)` : '';
       if (a.category === 'tool') {
@@ -1638,135 +1635,206 @@ function renderChatProcess(processes: ChatProcessEntry[], running: boolean) {
     });
 
     navigator.clipboard.writeText(markdownLines.join('\n')).then(() => {
-      copyBtn.innerHTML = '<span>✓ Tersalin</span>';
+      copyBtn.innerHTML = '<span>✓</span>';
       setTimeout(() => {
-        copyBtn.innerHTML = '<span>📋 Salin Log</span>';
+        copyBtn.innerHTML = '<span>📋</span>';
       }, 2000);
     });
   });
 
-  const toggleBtn = document.createElement('button');
-  toggleBtn.type = 'button';
-  toggleBtn.className = 'trace-toggle-btn';
-  toggleBtn.textContent = 'Tutup ▴';
+  rootWrapper.append(rootHeader, copyBtn);
+  container.append(rootWrapper);
 
-  headerRight.append(copyBtn, toggleBtn);
-  header.append(headerLeft, headerRight);
-  container.append(header);
+  // Tree Body
+  const treeBody = document.createElement('div');
+  treeBody.className = 'agent-tree-body';
 
-  // Trace Steps Timeline - Kept open by default so trajectory details remain visible after response finishes
-  const timeline = document.createElement('div');
-  timeline.className = 'trace-timeline';
-
-  const toggleTimeline = () => {
-    const isCollapsed = timeline.classList.toggle('collapsed');
-    toggleBtn.textContent = isCollapsed ? 'Detail Trajectory ▾' : 'Tutup ▴';
+  const toggleTree = () => {
+    const isColl = treeBody.classList.toggle('collapsed');
+    rootChevron.textContent = isColl ? '›' : '⌄';
   };
 
-  toggleBtn.addEventListener('click', (e) => {
-    e.stopPropagation();
-    toggleTimeline();
+  rootHeader.addEventListener('click', () => toggleTree());
+  rootHeader.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      toggleTree();
+    }
   });
-
-  const startTime = actions[0]?.startTime ?? Date.now();
 
   actions.forEach((action, index) => {
     const isLast = index === actions.length - 1;
     const isActionRunning = running && isLast && action.status === 'running';
-    const badgeInfo = getActionCategoryBadge(action);
 
-    const stepItem = document.createElement('div');
-    stepItem.className = `trace-action-card ${badgeInfo.themeClass}${isActionRunning ? ' action-running' : ' action-done'}`;
+    const itemWrapper = document.createElement('div');
+    itemWrapper.className = 'agent-tree-item';
 
-    // Action Header
-    const actionHeader = document.createElement('div');
-    actionHeader.className = 'action-card-header';
+    const row = document.createElement('div');
+    row.className = 'agent-tree-row';
 
-    const headerMain = document.createElement('div');
-    headerMain.className = 'action-header-main';
-
-    const iconSpan = document.createElement('span');
-    iconSpan.className = `action-type-icon ${isActionRunning ? 'icon-pulsing' : ''}`;
-    iconSpan.textContent = badgeInfo.icon;
-
-    const labelBadge = document.createElement('span');
-    labelBadge.className = 'action-label-badge';
-    labelBadge.textContent = badgeInfo.label;
-
-    headerMain.append(iconSpan, labelBadge);
-
-    if (action.toolTarget) {
-      const targetPill = document.createElement('code');
-      targetPill.className = 'action-target-pill';
-      targetPill.textContent = action.toolTarget;
-      targetPill.title = action.toolTarget;
-      headerMain.append(targetPill);
-    }
-
-    const headerMeta = document.createElement('div');
-    headerMeta.className = 'action-header-meta';
-
-    if (isActionRunning) {
-      const runningPill = document.createElement('span');
-      runningPill.className = 'action-status-pill pill-running';
-      runningPill.textContent = 'Memproses...';
-      headerMeta.append(runningPill);
-    } else if (action.status === 'error') {
-      const errPill = document.createElement('span');
-      errPill.className = 'action-status-pill pill-error';
-      errPill.textContent = '✕ Gagal';
-      headerMeta.append(errPill);
-    } else {
-      const donePill = document.createElement('span');
-      donePill.className = 'action-status-pill pill-done';
-      const durationMs = (action.endTime || Date.now()) - action.startTime;
-      donePill.textContent = `✓ ${(durationMs / 1000).toFixed(1)}s`;
-      headerMeta.append(donePill);
-    }
-
-    const chevron = document.createElement('span');
-    chevron.className = 'action-chevron';
-    chevron.textContent = '▾';
-    headerMeta.append(chevron);
-
-    actionHeader.append(headerMain, headerMeta);
-    stepItem.append(actionHeader);
-
-    // Action Drawer / Content - Keep expanded by default so execution details remain visible
-    const actionDrawer = document.createElement('div');
-    actionDrawer.className = 'action-drawer';
-
-    actionHeader.addEventListener('click', () => {
-      const isColl = actionDrawer.classList.toggle('drawer-collapsed');
-      chevron.textContent = isColl ? '▸' : '▾';
-    });
+    let hasDrawer = false;
+    let drawerContent: HTMLElement | null = null;
 
     if (action.category === 'reasoning') {
       const rawText = action.output || '';
-      const wordCount = rawText.trim().split(/\s+/).filter(Boolean).length;
-      const reasoningBox = document.createElement('div');
-      reasoningBox.className = 'step-reasoning-box';
-      reasoningBox.innerHTML = `<div class="reasoning-meta-bar"><span>🧠 Deep Reasoning Stream</span><span>${wordCount} kata</span></div><div class="reasoning-text">${rawText}</div>`;
-      actionDrawer.append(reasoningBox);
-    } else if (action.output) {
-      if (action.toolName === 'list_dir' && !action.output.includes('Error')) {
-        actionDrawer.append(renderFileListPreview(action.output));
-      } else if (action.output.includes('```diff') || (action.output.includes('--- a/') && action.output.includes('+++ b/'))) {
-        actionDrawer.append(renderDiffPreview(action.output));
-      } else if (action.toolName === 'run_command' || action.output.startsWith('$ ') || action.output.includes('[Status: Exit')) {
-        actionDrawer.append(renderTerminalOutput(action.output));
-      } else if (action.toolName === 'read_file' || action.toolName === 'view_file') {
-        actionDrawer.append(renderCodePreview(action.output, action.toolTarget));
+      const dur = Math.max(1, Math.round(((action.endTime || Date.now()) - action.startTime) / 1000));
+      const verb = document.createElement('span');
+      verb.className = 'tree-action-verb';
+      verb.textContent = isActionRunning ? 'Thinking...' : `Thought for ${dur}s`;
+      row.append(verb);
+
+      if (rawText) {
+        hasDrawer = true;
+        const box = document.createElement('div');
+        box.className = 'step-reasoning-box';
+        box.textContent = rawText;
+        drawerContent = box;
+      }
+    } else if (action.toolName === 'read_file' || action.toolName === 'view_file') {
+      const verb = document.createElement('span');
+      verb.className = 'tree-action-verb';
+      verb.textContent = 'Analyzed';
+
+      const targetPath = action.toolTarget || 'file';
+      const badgeInfo = getFileExtensionBadge(targetPath);
+      const badge = document.createElement('span');
+      badge.className = `ext-badge ${badgeInfo.className}`;
+      badge.textContent = badgeInfo.ext;
+
+      const targetSpan = document.createElement('span');
+      targetSpan.className = 'tree-target';
+      targetSpan.textContent = targetPath.split('/').pop() || targetPath;
+      targetSpan.title = targetPath;
+
+      row.append(verb, badge, targetSpan);
+
+      // Line metadata if present
+      if (action.toolArgsRaw) {
+        try {
+          const parsed = JSON.parse(action.toolArgsRaw);
+          if (parsed.StartLine || parsed.EndLine) {
+            const lineSpan = document.createElement('span');
+            lineSpan.className = 'tree-line-meta';
+            lineSpan.textContent = parsed.EndLine
+              ? `#L${parsed.StartLine || 1}-${parsed.EndLine}`
+              : `#L${parsed.StartLine}`;
+            row.append(lineSpan);
+          }
+        } catch {}
+      }
+
+      if (action.output) {
+        hasDrawer = true;
+        drawerContent = renderCodePreview(action.output, action.toolTarget);
+      }
+    } else if (action.toolName === 'edit_file' || action.toolName === 'write_file' || action.toolName === 'apply_diff') {
+      const verb = document.createElement('span');
+      verb.className = 'tree-action-verb';
+      verb.textContent = action.toolName === 'write_file' ? 'Wrote' : 'Edited';
+
+      const targetPath = action.toolTarget || 'file';
+      const badgeInfo = getFileExtensionBadge(targetPath);
+      const badge = document.createElement('span');
+      badge.className = `ext-badge ${badgeInfo.className}`;
+      badge.textContent = badgeInfo.ext;
+
+      const targetSpan = document.createElement('span');
+      targetSpan.className = 'tree-target';
+      targetSpan.textContent = targetPath.split('/').pop() || targetPath;
+      targetSpan.title = targetPath;
+
+      row.append(verb, badge, targetSpan);
+
+      // Diff counter stats
+      if (action.output) {
+        const addCount = (action.output.match(/^\+[^+]/gm) || []).length;
+        const delCount = (action.output.match(/^-[^-]/gm) || []).length;
+        if (addCount > 0 || delCount > 0) {
+          const statsSpan = document.createElement('span');
+          statsSpan.className = 'tree-diff-stats';
+          statsSpan.innerHTML = `${addCount > 0 ? `<span class="diff-add">+${addCount}</span> ` : ''}${delCount > 0 ? `<span class="diff-del">-${delCount}</span>` : ''}`;
+          row.append(statsSpan);
+        }
+        hasDrawer = true;
+        drawerContent = renderDiffPreview(action.output);
+      }
+    } else if (action.toolName === 'run_command') {
+      const verb = document.createElement('span');
+      verb.className = 'tree-action-verb';
+      verb.textContent = 'Ran';
+
+      const cmdSpan = document.createElement('code');
+      cmdSpan.className = 'tree-cmd';
+      const cmdText = action.toolTarget || action.toolArgsRaw || '';
+      cmdSpan.textContent = cmdText;
+      cmdSpan.title = cmdText;
+
+      row.append(verb, cmdSpan);
+
+      if (action.output) {
+        hasDrawer = true;
+        drawerContent = renderTerminalOutput(action.output);
+      }
+    } else if (action.toolName === 'list_dir' || action.toolName === 'search_path' || action.toolName === 'glob' || action.toolName === 'analyze_workspace') {
+      const verb = document.createElement('span');
+      verb.className = 'tree-action-verb';
+      verb.textContent = 'Explored';
+
+      const targetSpan = document.createElement('span');
+      targetSpan.className = 'tree-target';
+      targetSpan.textContent = action.toolTarget || 'workspace';
+      row.append(verb, targetSpan);
+
+      if (action.output && !action.output.includes('Error')) {
+        hasDrawer = true;
+        drawerContent = renderFileListPreview(action.output);
+      }
+    } else if (action.category === 'context') {
+      const verb = document.createElement('span');
+      verb.className = 'tree-action-verb';
+      verb.textContent = action.title;
+
+      const targetSpan = document.createElement('span');
+      targetSpan.className = 'tree-target';
+      targetSpan.textContent = action.output || '';
+      row.append(verb, targetSpan);
+    } else {
+      const verb = document.createElement('span');
+      verb.className = 'tree-action-verb';
+      verb.textContent = action.title || 'Aktivitas';
+
+      if (action.output) {
+        const textSpan = document.createElement('span');
+        textSpan.className = 'tree-target';
+        textSpan.textContent = action.output;
+        row.append(verb, textSpan);
       } else {
-        const textPre = document.createElement('pre');
-        textPre.className = 'action-generic-output';
-        textPre.textContent = action.output;
-        actionDrawer.append(textPre);
+        row.append(verb);
       }
     }
 
-    stepItem.append(actionDrawer);
-    timeline.append(stepItem);
+    if (hasDrawer && drawerContent) {
+      row.classList.add('has-drawer');
+      const itemChevron = document.createElement('span');
+      itemChevron.className = 'tree-item-chevron';
+      itemChevron.textContent = '›';
+      row.append(itemChevron);
+
+      const drawer = document.createElement('div');
+      drawer.className = 'agent-tree-drawer drawer-collapsed';
+      drawer.append(drawerContent);
+
+      row.addEventListener('click', () => {
+        const isColl = drawer.classList.toggle('drawer-collapsed');
+        itemChevron.textContent = isColl ? '›' : '⌄';
+      });
+
+      itemWrapper.append(row, drawer);
+    } else {
+      itemWrapper.append(row);
+    }
+
+    treeBody.append(itemWrapper);
   });
 
   const rawBox = document.createElement('div');
@@ -1775,10 +1843,10 @@ function renderChatProcess(processes: ChatProcessEntry[], running: boolean) {
   rawBox.textContent = `${processes.map((p) => p.text).join(' ')} ${running ? 'Running' : 'Complete'}`;
   container.append(rawBox);
 
-  container.append(timeline);
+  container.append(treeBody);
   if (running) {
     window.requestAnimationFrame(() => {
-      timeline.scrollTop = timeline.scrollHeight;
+      treeBody.scrollTop = treeBody.scrollHeight;
     });
   }
   return container;
