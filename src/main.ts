@@ -717,6 +717,7 @@ function formatSessionTime(timestamp: number) {
 
 function openChatSession(sessionId: string) {
   activeChatSessionId = sessionId;
+  userScrolledUp = false;
   showDesktopPage('chat');
   forceVisibleDesktopContent();
   renderChatSessions();
@@ -827,6 +828,17 @@ if (typeof window !== 'undefined') {
   (window as any).renderMermaidDiagrams = renderMermaidDiagrams;
 }
 
+let userScrolledUp = false;
+let chatStreamRenderRaf: number | null = null;
+
+function scheduleChatStreamRender() {
+  if (chatStreamRenderRaf !== null) return;
+  chatStreamRenderRaf = window.requestAnimationFrame(() => {
+    chatStreamRenderRaf = null;
+    renderChatMessages();
+  });
+}
+
 function renderChatMessages() {
   if (!chatMessages) return;
   const session = chatSessions.find((item) => item.id === activeChatSessionId);
@@ -871,12 +883,19 @@ function renderChatMessages() {
     messageNodes.push(item);
   }
   chatMessages.replaceChildren(...messageNodes);
-  chatMessages.scrollTop = chatMessages.scrollHeight;
 
-  if (mermaidRenderTimer) clearTimeout(mermaidRenderTimer);
-  mermaidRenderTimer = setTimeout(() => {
-    if (chatMessages) renderMermaidDiagrams(chatMessages);
-  }, 100);
+  // Smart auto-scroll: Only auto-scroll to bottom if user has not scrolled up to inspect history/trajectory
+  if (!userScrolledUp) {
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+  }
+
+  // Defer heavy mermaid diagrams rendering until stream is complete to avoid webview CPU lockup/crashes
+  if (!activeChatStreamRequestId) {
+    if (mermaidRenderTimer) clearTimeout(mermaidRenderTimer);
+    mermaidRenderTimer = setTimeout(() => {
+      if (chatMessages) renderMermaidDiagrams(chatMessages);
+    }, 150);
+  }
 
   if (chatMemoryContext) {
     chatMemoryContext.textContent = session.memory_context_count
@@ -1766,7 +1785,7 @@ function applyChatStreamEvent(event: DesktopChatStreamEvent) {
       activeChatProcesses.push({ kind: 'reasoning', text: event.delta, createdAt: Date.now() });
     }
     if (chatStatus) chatStatus.textContent = '🧠 Reasoning & Thinking...';
-    renderChatMessages();
+    scheduleChatStreamRender();
     return;
   }
 
@@ -1781,7 +1800,7 @@ function applyChatStreamEvent(event: DesktopChatStreamEvent) {
       if (event.kind === 'tool_done') chatStatus.textContent = '⚡ Tools selesai...';
       if (event.kind === 'error') chatStatus.textContent = event.delta;
     }
-    renderChatMessages();
+    scheduleChatStreamRender();
     return;
   }
 
@@ -1789,7 +1808,7 @@ function applyChatStreamEvent(event: DesktopChatStreamEvent) {
   const message = session?.messages.find((item) => item.id === `stream-${event.request_id}`);
   if (!message) return;
   message.content += event.delta;
-  renderChatMessages();
+  scheduleChatStreamRender();
   if (chatStatus) chatStatus.textContent = 'Menerima respons streaming...';
 }
 
@@ -1810,6 +1829,7 @@ async function sendChatMessage() {
 
 async function sendChatMessageText(message: string, sessionId: string, attachments: DesktopChatAttachment[] = []) {
   if (!chatInput) return;
+  userScrolledUp = false;
   if (sendChatButton) sendChatButton.disabled = true;
   if (retryChatButton) retryChatButton.disabled = true;
   if (cancelChatStreamButton) {
@@ -2863,6 +2883,7 @@ document.addEventListener('paste', (event) => void handleChatPaste(event));
 function startNewChat() {
   activeChatSessionId = '';
   pendingChatAttachments = [];
+  userScrolledUp = false;
   showDesktopPage('chat');
   forceVisibleDesktopContent();
   renderChatSessions();
@@ -2901,6 +2922,12 @@ deleteChatButton?.addEventListener('click', () => void deleteActiveChatSession()
 chatSessionSelect?.addEventListener('change', () => {
   openChatSession(chatSessionSelect.value);
 });
+chatMessages?.addEventListener('scroll', () => {
+  if (!chatMessages) return;
+  const threshold = 60;
+  const isAtBottom = chatMessages.scrollHeight - chatMessages.scrollTop - chatMessages.clientHeight <= threshold;
+  userScrolledUp = !isAtBottom;
+}, { passive: true });
 memoryForm?.addEventListener('submit', (event) => {
   event.preventDefault();
   void saveMemory();
