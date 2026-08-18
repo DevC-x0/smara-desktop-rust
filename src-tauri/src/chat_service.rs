@@ -856,25 +856,36 @@ pub async fn stream_desktop_chat(
         &app,
         &request_id,
         "thinking",
-        "Menyiapkan Chat stream dan membaca memory relevan.",
+        "Menyiapkan sesi agen, memuat protokol AGENTS.md, dan konfigurasi lingkungan.",
     );
+    if let Some(scan) = workspace_scan_context(&request.message) {
+        let first_line = scan.lines().next().unwrap_or("Local Workspace Scan");
+        emit_chat_stream_event(
+            &app,
+            &request_id,
+            "explore",
+            format!("Workspace Scanner: {first_line}"),
+        );
+    }
     let memories = relevant_memories(&app, &request.message, 5)?;
-    emit_chat_stream_event(
-        &app,
-        &request_id,
-        "analysis",
-        format!(
-            "Memory context: {} item relevan akan dipakai bila membantu.",
-            memories.len()
-        ),
-    );
+    if !memories.is_empty() {
+        emit_chat_stream_event(
+            &app,
+            &request_id,
+            "memory",
+            format!(
+                "Persistent Memory: {} memori relevan teridentifikasi dan dimuat.",
+                memories.len()
+            ),
+        );
+    }
     let path = chat_path(&app)?;
     let config = load_provider_config(&app)?;
     emit_chat_stream_event(
         &app,
         &request_id,
         "tool_start",
-        format!("Provider call: {} · {}", config.provider, config.model),
+        format!("LLM Inference Call: Menginisialisasi provider {} ({})", config.provider, config.model),
     );
     let event_app_for_delta = app.clone();
     let event_app_for_done = app.clone();

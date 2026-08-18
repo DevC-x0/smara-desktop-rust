@@ -899,6 +899,33 @@ input, textarea, select {
   letter-spacing: -0.01em;
 }
 
+.trace-header-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.trace-copy-btn {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 500;
+  padding: 3px 8px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  transition: all 120ms ease;
+}
+
+.trace-copy-btn:hover {
+  background: rgba(255, 255, 255, 0.09);
+  color: var(--text-main);
+  border-color: rgba(255, 255, 255, 0.18);
+}
+
 .trace-toggle-btn {
   background: rgba(255, 255, 255, 0.04);
   border: 1px solid var(--border);
@@ -985,6 +1012,17 @@ input, textarea, select {
   margin-bottom: 2px;
 }
 
+.step-index-badge {
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-muted);
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-family: var(--font-mono);
+}
+
 .step-label {
   font-size: 11px;
   font-weight: 700;
@@ -1008,6 +1046,30 @@ input, textarea, select {
 
 .step-active .step-label {
   color: var(--accent);
+}
+
+.step-active .step-index-badge {
+  background: rgba(190, 242, 100, 0.18);
+  color: var(--accent);
+}
+
+.reasoning-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11px;
+  color: var(--text-faint);
+  margin-top: 6px;
+  margin-bottom: 2px;
+  font-family: var(--font-mono);
+}
+
+.reasoning-meta {
+  background: rgba(190, 242, 100, 0.08);
+  color: var(--accent);
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-size: 10px;
 }
 
 .step-reasoning-box {

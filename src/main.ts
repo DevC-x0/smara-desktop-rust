@@ -885,27 +885,47 @@ function renderChatProcess(processes: ChatProcessEntry[], running: boolean) {
   const statusIndicator = document.createElement('span');
   statusIndicator.className = running ? 'trace-pulse-badge' : 'trace-done-badge';
   statusIndicator.innerHTML = running
-    ? '<span class="pulse-ring"></span><span>AGENT LIVE</span>'
-    : '<span>✓ TRACE COMPLETE</span>';
+    ? '<span class="pulse-ring"></span><span>AGENT RUNNING</span>'
+    : '<span>✓ TRAJECTORY COMPLETE</span>';
 
   const activeTitle = document.createElement('span');
   activeTitle.className = 'trace-title';
   const latestProcess = processes[processes.length - 1];
   activeTitle.textContent = running
-    ? `${chatProcessIcon(latestProcess?.kind ?? 'thinking')} ${chatProcessLabel(latestProcess?.kind ?? 'thinking')}...`
-    : `✦ Agent Execution (${processes.length} steps)`;
+    ? `${chatProcessIcon(latestProcess?.kind ?? 'thinking')} ${chatProcessLabel(latestProcess?.kind ?? 'thinking')} (Langkah ${processes.length})`
+    : `✦ Agent Trajectory (${processes.length} langkah aktivitas)`;
 
   headerLeft.append(statusIndicator, activeTitle);
 
   const headerRight = document.createElement('div');
   headerRight.className = 'trace-header-right';
 
+  // Copy Trajectory Log Button
+  const copyBtn = document.createElement('button');
+  copyBtn.type = 'button';
+  copyBtn.className = 'trace-copy-btn';
+  copyBtn.title = 'Salin ringkasan trajectory agent ke clipboard';
+  copyBtn.innerHTML = '<span>📋 Salin Log</span>';
+  copyBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const logLines = processes.map((p, idx) => {
+      const time = new Date(p.createdAt).toLocaleTimeString();
+      return `[${time}] Step ${idx + 1} (${p.kind.toUpperCase()}): ${p.text}`;
+    });
+    navigator.clipboard.writeText(logLines.join('\n\n')).then(() => {
+      copyBtn.innerHTML = '<span>✓ Tersalin</span>';
+      setTimeout(() => {
+        copyBtn.innerHTML = '<span>📋 Salin Log</span>';
+      }, 2000);
+    });
+  });
+
   const toggleBtn = document.createElement('button');
   toggleBtn.type = 'button';
   toggleBtn.className = 'trace-toggle-btn';
-  toggleBtn.textContent = running ? 'Tutup ▴' : 'Detail ▾';
+  toggleBtn.textContent = running ? 'Tutup ▴' : 'Detail Trajectory ▾';
 
-  headerRight.append(toggleBtn);
+  headerRight.append(copyBtn, toggleBtn);
   header.append(headerLeft, headerRight);
   container.append(header);
 
@@ -918,7 +938,7 @@ function renderChatProcess(processes: ChatProcessEntry[], running: boolean) {
 
   toggleBtn.addEventListener('click', () => {
     const isCollapsed = timeline.classList.toggle('collapsed');
-    toggleBtn.textContent = isCollapsed ? 'Detail ▾' : 'Tutup ▴';
+    toggleBtn.textContent = isCollapsed ? 'Detail Trajectory ▾' : 'Tutup ▴';
   });
 
   const startTime = processes[0]?.createdAt ?? Date.now();
@@ -947,6 +967,10 @@ function renderChatProcess(processes: ChatProcessEntry[], running: boolean) {
     const stepMeta = document.createElement('div');
     stepMeta.className = 'step-meta';
 
+    const stepIndexBadge = document.createElement('span');
+    stepIndexBadge.className = 'step-index-badge';
+    stepIndexBadge.textContent = `Langkah ${index + 1}`;
+
     const stepLabel = document.createElement('strong');
     stepLabel.className = 'step-label';
     stepLabel.textContent = chatProcessLabel(process.kind);
@@ -956,16 +980,22 @@ function renderChatProcess(processes: ChatProcessEntry[], running: boolean) {
     const elapsedSec = ((process.createdAt - startTime) / 1000).toFixed(1);
     stepTime.textContent = `+${elapsedSec}s`;
 
-    stepMeta.append(stepLabel, stepTime);
+    stepMeta.append(stepIndexBadge, stepLabel, stepTime);
 
     const stepBody = document.createElement('div');
     stepBody.className = 'step-body';
 
     if (process.kind === 'reasoning') {
+      const wordCount = process.text.trim().split(/\s+/).filter(Boolean).length;
+      const reasoningHeader = document.createElement('div');
+      reasoningHeader.className = 'reasoning-header';
+      reasoningHeader.innerHTML = `<span>Deep Reasoning Stream</span><span class="reasoning-meta">${wordCount} kata</span>`;
+
       const reasoningBox = document.createElement('div');
       reasoningBox.className = 'step-reasoning-box';
       reasoningBox.textContent = process.text;
-      stepBody.append(reasoningBox);
+
+      stepBody.append(reasoningHeader, reasoningBox);
     } else {
       stepBody.textContent = process.text;
     }
