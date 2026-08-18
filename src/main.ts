@@ -1297,7 +1297,16 @@ function getActionCategoryBadge(action: UnifiedAgentAction): { icon: string; lab
       case 'git_commit':
         return { icon: '✏️', label: action.toolName, themeClass: 'theme-edit' };
       case 'fetch_web_content':
-        return { icon: '🌐', label: 'fetch_web', themeClass: 'theme-web' };
+      case 'search_web':
+        return { icon: '🌐', label: action.toolName, themeClass: 'theme-web' };
+      case 'get_code_stats':
+        return { icon: '📊', label: 'get_code_stats', themeClass: 'theme-stats' };
+      case 'get_process_logs':
+      case 'create_terminal':
+      case 'kill_process':
+        return { icon: '📟', label: action.toolName, themeClass: 'theme-terminal' };
+      case 'query_code_graph':
+        return { icon: '🕸️', label: 'query_code_graph', themeClass: 'theme-context' };
       default:
         return { icon: '🛠️', label: action.toolName, themeClass: 'theme-tool' };
     }

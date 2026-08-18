@@ -182,6 +182,30 @@ pub fn list_desktop_builtin_tools_internal() -> Vec<DesktopBuiltinTool> {
             "safe-readonly",
             false,
         ),
+        tool(
+            "get_code_stats",
+            "Get instant lines of code (LOC), language breakdown, and file statistics for the workspace or a subdirectory.",
+            "safe-readonly",
+            false,
+        ),
+        tool(
+            "search_web",
+            "Search the web for technical documentation, library APIs, and error solutions.",
+            "safe-readonly",
+            false,
+        ),
+        tool(
+            "get_process_logs",
+            "Inspect live stdout/stderr logs and running status of a background process started by create_terminal.",
+            "safe-readonly",
+            false,
+        ),
+        tool(
+            "query_code_graph",
+            "Query the workspace code knowledge graph for symbols, functions, dependencies, and file relationships.",
+            "safe-readonly",
+            false,
+        ),
     ]
 }
 
@@ -402,6 +426,64 @@ pub fn export_openai_tools_schema() -> Vec<Value> {
                         "url": { "type": "string", "description": "The full HTTP or HTTPS URL to fetch" }
                     },
                     "required": ["url"]
+                }
+            }
+        }),
+        serde_json::json!({
+            "type": "function",
+            "function": {
+                "name": "get_code_stats",
+                "description": "Calculate instant lines of code (LOC), file counts, language breakdown, and percentage statistics for a workspace directory or subfolder.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "path": { "type": "string", "description": "Relative directory path (e.g. '.' or 'komida')" }
+                    }
+                }
+            }
+        }),
+        serde_json::json!({
+            "type": "function",
+            "function": {
+                "name": "search_web",
+                "description": "Search the web for technical documentation, library API guides, framework tutorials, and programming solutions.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "query": { "type": "string", "description": "The search keywords to look up" },
+                        "limit": { "type": "integer", "description": "Maximum number of results (default 5)" }
+                    },
+                    "required": ["query"]
+                }
+            }
+        }),
+        serde_json::json!({
+            "type": "function",
+            "function": {
+                "name": "get_process_logs",
+                "description": "Inspect the running status and recent stdout/stderr output lines of a background process started with create_terminal.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "pid": { "type": "integer", "description": "The Process ID (PID) to inspect" },
+                        "lines": { "type": "integer", "description": "Number of tail lines to retrieve (default 50)" }
+                    },
+                    "required": ["pid"]
+                }
+            }
+        }),
+        serde_json::json!({
+            "type": "function",
+            "function": {
+                "name": "query_code_graph",
+                "description": "Search and query the codebase knowledge graph for symbols, functions, classes, dependencies, and file relationships.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "query": { "type": "string", "description": "The symbol, function name, class, or dependency to search" },
+                        "max_results": { "type": "integer", "description": "Maximum number of matched nodes to return (default 20)" }
+                    },
+                    "required": ["query"]
                 }
             }
         })
@@ -1037,24 +1119,318 @@ fn execute(root: &Path, tool: &str, args: &Value) -> Result<String, String> {
         }
         "create_terminal" => {
             let command = get_string(args, "command")?;
-            let child = std::process::Command::new("sh")
+            #[cfg(unix)]
+            let shell = if std::path::Path::new("/bin/bash").exists() { "/bin/bash" } else { "sh" };
+            #[cfg(not(unix))]
+            let shell = "cmd";
+
+            let child = std::process::Command::new(shell)
                 .args(["-c", command])
                 .current_dir(root)
-                .stdout(std::process::Stdio::null())
-                .stderr(std::process::Stdio::null())
+                .stdout(std::process::Stdio::piped())
+                .stderr(std::process::Stdio::piped())
                 .spawn()
                 .map_err(|error| format!("Failed to start process: {error}"))?;
             let pid = child.id();
+
+            let log_path = std::env::temp_dir().join(format!("smara_proc_{pid}.log"));
+            let mut child = child;
+            if let Some(stdout) = child.stdout.take() {
+                let log_p = log_path.clone();
+                std::thread::spawn(move || {
+                    use std::io::{BufRead, BufReader, Write};
+                    let reader = BufReader::new(stdout);
+                    if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(&log_p) {
+                        for line in reader.lines().flatten() {
+                            let _ = writeln!(f, "{}", line);
+                        }
+                    }
+                });
+            }
+            if let Some(stderr) = child.stderr.take() {
+                let log_p = log_path.clone();
+                std::thread::spawn(move || {
+                    use std::io::{BufRead, BufReader, Write};
+                    let reader = BufReader::new(stderr);
+                    if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(&log_p) {
+                        for line in reader.lines().flatten() {
+                            let _ = writeln!(f, "[STDERR] {}", line);
+                        }
+                    }
+                });
+            }
+
             Ok(format!(
-                "✅ Background process started:\n- PID: {pid}\n- Command: {command}\n- Working dir: {}\n\nUse kill_process with PID {pid} to stop.",
-                root.display()
+                "✅ Background process started:\n- PID: {pid}\n- Command: `{command}`\n- Working dir: `{}`\n- Log file: `{}`\n\nUse `get_process_logs` with PID {pid} to view output, or `kill_process` to terminate.",
+                root.display(),
+                log_path.display()
             ))
+        }
+        "get_process_logs" => {
+            let pid = args.get("pid")
+                .and_then(Value::as_u64)
+                .ok_or_else(|| "Parameter 'pid' must be a valid number.".to_string())? as u32;
+            let lines_count = args.get("lines").and_then(Value::as_u64).unwrap_or(50) as usize;
+
+            #[cfg(unix)]
+            let is_running = {
+                std::process::Command::new("kill")
+                    .args(["-0", &pid.to_string()])
+                    .output()
+                    .map(|o| o.status.success())
+                    .unwrap_or(false)
+            };
+            #[cfg(not(unix))]
+            let is_running = false;
+
+            let status_label = if is_running { "🟢 RUNNING (Active)" } else { "⚪ TERMINATED / FINISHED" };
+            let log_path = std::env::temp_dir().join(format!("smara_proc_{pid}.log"));
+            let content = if log_path.exists() {
+                std::fs::read_to_string(&log_path).unwrap_or_else(|_| "(Log file unreadable)".to_string())
+            } else {
+                "(No output log recorded yet for this PID)".to_string()
+            };
+
+            let tail_lines = content
+                .lines()
+                .rev()
+                .take(lines_count)
+                .collect::<Vec<_>>()
+                .into_iter()
+                .rev()
+                .collect::<Vec<_>>()
+                .join("\n");
+
+            Ok(format!(
+                "📋 **Background Process Status (PID: {})**\n- **Status:** {}\n- **Log File:** `{}`\n\n```text\n{}\n```",
+                pid,
+                status_label,
+                log_path.display(),
+                if tail_lines.is_empty() { "(Process has produced no output)" } else { &tail_lines }
+            ))
+        }
+        "get_code_stats" => {
+            let rel_path = args.get("path").and_then(Value::as_str).unwrap_or(".");
+            let target_dir = if rel_path == "." || rel_path.trim().is_empty() {
+                root.to_path_buf()
+            } else {
+                existing_workspace_path(root, args, "path")?
+            };
+            if !target_dir.is_dir() {
+                return Err(format!("Path '{}' is not a directory.", target_dir.display()));
+            }
+
+            let ignored = [
+                "node_modules", ".git", ".next", "dist", "target", "build", ".turbo",
+                ".cache", "vendor", "__pycache__", ".output", ".nuxt", ".vercel"
+            ];
+
+            let mut stats: std::collections::BTreeMap<&'static str, (usize, usize)> = std::collections::BTreeMap::new();
+            let mut total_files = 0usize;
+            let mut total_loc = 0usize;
+
+            let mut stack = vec![target_dir];
+            while let Some(dir) = stack.pop() {
+                if let Ok(entries) = std::fs::read_dir(&dir) {
+                    for entry in entries.flatten() {
+                        let path = entry.path();
+                        let name = entry.file_name().to_string_lossy().to_string();
+                        if path.is_dir() {
+                            if !ignored.contains(&name.as_str()) && !name.starts_with('.') {
+                                stack.push(path);
+                            }
+                        } else if path.is_file() {
+                            let ext = path.extension().and_then(|s| s.to_str()).unwrap_or("").to_ascii_lowercase();
+                            let lang = match ext.as_str() {
+                                "ts" => "TypeScript (.ts)",
+                                "tsx" => "TypeScript (TSX)",
+                                "js" | "mjs" | "cjs" => "JavaScript",
+                                "jsx" => "JavaScript (JSX)",
+                                "vue" => "Vue",
+                                "svelte" => "Svelte",
+                                "html" | "htm" => "HTML",
+                                "css" => "CSS",
+                                "scss" | "sass" | "less" => "SCSS/SASS",
+                                "py" => "Python",
+                                "rs" => "Rust",
+                                "go" => "Go",
+                                "java" => "Java",
+                                "kt" | "kts" => "Kotlin",
+                                "sol" => "Solidity",
+                                "c" => "C",
+                                "cpp" | "cc" | "cxx" => "C++",
+                                "h" | "hpp" => "C/C++ Header",
+                                "sql" => "SQL",
+                                "sh" | "bash" | "zsh" => "Shell Script",
+                                "json" => "JSON",
+                                "yaml" | "yml" => "YAML",
+                                "md" | "markdown" => "Markdown",
+                                "toml" => "TOML",
+                                "xml" => "XML",
+                                _ => {
+                                    if name == "Dockerfile" || name.starts_with("Dockerfile.") {
+                                        "Dockerfile"
+                                    } else {
+                                        continue;
+                                    }
+                                }
+                            };
+
+                            if let Ok(content) = std::fs::read_to_string(&path) {
+                                let loc = content.lines().filter(|l| !l.trim().is_empty()).count();
+                                let entry = stats.entry(lang).or_insert((0, 0));
+                                entry.0 += 1;
+                                entry.1 += loc;
+                                total_files += 1;
+                                total_loc += loc;
+                            }
+                        }
+                    }
+                }
+            }
+
+            if total_files == 0 {
+                return Ok("No recognized source code files found in the specified path.".to_string());
+            }
+
+            let mut sorted: Vec<(&&str, &(usize, usize))> = stats.iter().collect();
+            sorted.sort_by(|a, b| b.1.1.cmp(&a.1.1));
+
+            let mut out = format!(
+                "📊 **Codebase Statistics & Language Breakdown**\n\
+                - **Target Path:** `{}`\n\
+                - **Total Files:** {} files\n\
+                - **Total Effective Lines of Code (LOC):** {} lines\n\n\
+                | Bahasa / Format | Jumlah File | Baris Kode (LOC) | Persentase |\n\
+                | :--- | :--- | :--- | :--- |\n",
+                rel_path, total_files, total_loc
+            );
+
+            for (lang, (files, loc)) in &sorted {
+                let pct = if total_loc > 0 { (*loc as f64 / total_loc as f64) * 100.0 } else { 0.0 };
+                out.push_str(&format!("| **{}** | {} | {} | {:.2}% |\n", lang, files, loc, pct));
+            }
+
+            out.push_str("\n```mermaid\npie title Komposisi Bahasa Pemrograman\n");
+            for (lang, (_, loc)) in sorted.iter().take(8) {
+                out.push_str(&format!("    \"{}\" : {}\n", lang, loc));
+            }
+            out.push_str("```\n");
+
+            Ok(out)
+        }
+        "search_web" => {
+            let query = get_string(args, "query")?;
+            let limit = args.get("limit").and_then(Value::as_u64).unwrap_or(5).clamp(1, 10) as usize;
+
+            let client = reqwest::blocking::Client::builder()
+                .timeout(std::time::Duration::from_secs(12))
+                .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36")
+                .build()
+                .map_err(|e| format!("Failed to create HTTP client: {e}"))?;
+
+            let encoded_query = url::form_urlencoded::byte_serialize(query.as_bytes()).collect::<String>();
+            let ddg_url = format!("https://html.duckduckgo.com/html/?q={encoded_query}");
+
+            let mut results = Vec::new();
+            if let Ok(res) = client.get(&ddg_url).send() {
+                if let Ok(html) = res.text() {
+                    let parts = html.split("class=\"result__snippet\"").collect::<Vec<_>>();
+                    if parts.len() > 1 {
+                        for part in parts.iter().skip(1).take(limit) {
+                            if let Some(snippet_end) = part.find("</a>") {
+                                let snippet_raw = &part[..snippet_end];
+                                let snippet = snippet_raw
+                                    .replace("<b>", "")
+                                    .replace("</b>", "")
+                                    .replace("&quot;", "\"")
+                                    .replace("&amp;", "&")
+                                    .replace("&#x27;", "'")
+                                    .trim()
+                                    .to_string();
+                                if !snippet.is_empty() {
+                                    results.push(snippet);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            let instant_url = format!("https://api.duckduckgo.com/?q={encoded_query}&format=json&no_html=1");
+            let mut abstract_text = String::new();
+            if let Ok(res) = client.get(&instant_url).send() {
+                if let Ok(json) = res.json::<Value>() {
+                    if let Some(heading) = json.get("Heading").and_then(Value::as_str) {
+                        if let Some(abs) = json.get("AbstractText").and_then(Value::as_str) {
+                            if !abs.is_empty() {
+                                abstract_text = format!("**{}**: {}\nSource: {}", heading, abs, json.get("AbstractURL").and_then(Value::as_str).unwrap_or("DuckDuckGo"));
+                            }
+                        }
+                    }
+                }
+            }
+
+            let mut out = format!("🌐 **Web Search Results for:** `{}`\n\n", query);
+            if !abstract_text.is_empty() {
+                out.push_str(&format!("### Summary\n{}\n\n### Web Results\n", abstract_text));
+            }
+
+            if results.is_empty() && abstract_text.is_empty() {
+                out.push_str("Tidak ada hasil spesifik ditemukan atau koneksi jaringan offline. Coba gunakan kata kunci yang lebih spesifik.");
+            } else {
+                for (idx, item) in results.iter().enumerate() {
+                    out.push_str(&format!("{}. {}\n\n", idx + 1, item));
+                }
+            }
+
+            Ok(out)
+        }
+        "query_code_graph" => {
+            let query = get_string(args, "query")?;
+            let max_results = args.get("max_results").and_then(Value::as_u64).unwrap_or(20).clamp(1, 50) as usize;
+
+            let graph = crate::graphify_service::build_graphify_internal(crate::graphify_service::BuildDesktopGraphifyRequest {
+                workspace_root: root.display().to_string(),
+                max_files: Some(300),
+            })?;
+
+            let matched_nodes = crate::graphify_service::search_graphify_internal(&graph, query);
+            let mut out = format!(
+                "🕸️ **Code Knowledge Graph Query Results for:** `{}`\n\
+                - **Total Graph Nodes in Workspace:** {}\n\
+                - **Total Dependencies & Relationships:** {}\n\n",
+                query, graph.node_count, graph.edge_count
+            );
+
+            if matched_nodes.is_empty() {
+                out.push_str("Tidak ada symbol, file, atau dependency yang cocok dengan query tersebut.");
+            } else {
+                out.push_str("| Kind | Name / Symbol | File Location | Relationships |\n| :--- | :--- | :--- | :--- |\n");
+                for node in matched_nodes.iter().take(max_results) {
+                    let related_edges = graph.edges.iter()
+                        .filter(|e| e.source == node.id || e.target == node.id)
+                        .take(3)
+                        .map(|e| format!("{}: `{}`", e.relation, e.evidence))
+                        .collect::<Vec<_>>()
+                        .join("<br>");
+
+                    out.push_str(&format!(
+                        "| **{}** | `{}` | `{}` | {} |\n",
+                        node.kind,
+                        node.label,
+                        if node.path.is_empty() { "-" } else { &node.path },
+                        if related_edges.is_empty() { "-" } else { &related_edges }
+                    ));
+                }
+            }
+
+            Ok(out)
         }
         "kill_process" => {
             let pid = args.get("pid")
                 .and_then(Value::as_u64)
                 .ok_or_else(|| "Argument 'pid' must be a number.".to_string())? as u32;
-            // Try SIGTERM first (Unix)
             #[cfg(unix)]
             {
                 let _ = std::process::Command::new("kill")
@@ -1391,6 +1767,29 @@ mod tests {
         .unwrap();
         assert!(result.output.contains("smara terminal test"));
         assert!(result.output.contains("Exit 0"));
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn get_code_stats_calculates_breakdown_and_generates_mermaid() {
+        let root = temp_workspace();
+        fs::write(root.join("main.rs"), "fn main() {\n    println!(\"hello\");\n}\n").unwrap();
+        fs::write(root.join("app.tsx"), "export function App() {\n    return <div>Smara</div>;\n}\n").unwrap();
+
+        let result = run(&root, "get_code_stats", json!({"path": "."}), false).unwrap();
+        assert!(result.output.contains("Rust"));
+        assert!(result.output.contains("TypeScript (TSX)"));
+        assert!(result.output.contains("pie title Komposisi Bahasa Pemrograman"));
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn query_code_graph_discovers_symbols() {
+        let root = temp_workspace();
+        fs::write(root.join("lib.rs"), "pub struct SmaraCore {}\npub fn run_engine() {}\n").unwrap();
+
+        let result = run(&root, "query_code_graph", json!({"query": "SmaraCore"}), false).unwrap();
+        assert!(result.output.contains("SmaraCore"));
         let _ = fs::remove_dir_all(root);
     }
 }
