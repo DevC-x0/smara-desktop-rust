@@ -119,6 +119,7 @@ async function installMockTauri(
           const session = {
             id: existing?.id || `chat-${timestamp}`,
             title: existing?.title || args.request.message,
+            workspace: args.request.workspace || existing?.workspace || window.__SMARA_ACTIVE_WORKSPACE__ || 'default',
             created_at_ms: existing?.created_at_ms || timestamp,
             updated_at_ms: timestamp,
             messages: [

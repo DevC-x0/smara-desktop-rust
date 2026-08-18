@@ -1315,6 +1315,7 @@ input, textarea, select {
   padding: 24px 32px;
   display: flex;
   flex-direction: column;
+  align-items: center;
   gap: 16px;
   width: 100%;
 }
@@ -1359,14 +1360,19 @@ input, textarea, select {
   flex-direction: column;
   gap: 6px;
   width: 100%;
+  max-width: 860px;
 }
 
 .chat-message-user {
-  align-self: flex-end;
-  max-width: 80%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  width: 100%;
+  max-width: 860px;
 }
 
 .chat-message-user .chat-message-body {
+  max-width: 80%;
   background: rgba(190, 242, 100, 0.12);
   border: 1px solid rgba(190, 242, 100, 0.28);
   color: #F4F8EF;
@@ -1379,8 +1385,8 @@ input, textarea, select {
 }
 
 .chat-message-assistant {
-  align-self: flex-start;
   width: 100%;
+  max-width: 860px;
 }
 
 .chat-message-assistant .chat-message-body {
@@ -1509,7 +1515,7 @@ input, textarea, select {
    ========================================================================== */
 
 .agent-tree-container {
-  margin: 6px 0 14px 0;
+  margin: 6px auto 14px auto;
   font-family: var(--font-sans);
   font-size: 13px;
   color: #94A3B8;
@@ -2037,7 +2043,7 @@ input, textarea, select {
 .chat-composer-container {
   padding: 8px 32px 18px 32px;
   background: transparent;
-  max-width: 900px;
+  max-width: 860px;
   margin: 0 auto;
   width: 100%;
   flex-shrink: 0;
