@@ -1,11 +1,29 @@
 import { fileAssetUrl, invokeCommand, listenCommand } from './tauri-client';
 import { readImage as readClipboardImage } from '@tauri-apps/plugin-clipboard-manager';
 import { marked } from 'marked';
+import mermaid from 'mermaid';
 import './styles.css';
 
 marked.setOptions({
   gfm: true,
   breaks: true,
+});
+
+mermaid.initialize({
+  startOnLoad: false,
+  theme: 'dark',
+  darkMode: true,
+  themeVariables: {
+    darkMode: true,
+    background: '#050805',
+    primaryColor: '#1A291A',
+    primaryTextColor: '#E2E8F0',
+    primaryBorderColor: '#BEF264',
+    lineColor: '#BEF264',
+    secondaryColor: '#142014',
+    tertiaryColor: '#0E170E',
+    fontFamily: 'Inter, system-ui, sans-serif',
+  },
 });
 
 type DesktopCapability = {
@@ -574,6 +592,55 @@ function renderSidebarChatSessions() {
   }));
 }
 
+let mermaidRenderTimer: ReturnType<typeof setTimeout> | null = null;
+
+async function renderMermaidDiagrams(container: HTMLElement) {
+  const codeBlocks = container.querySelectorAll<HTMLElement>('pre code.language-mermaid, pre code.language-chart');
+  let idCounter = 0;
+  for (const block of Array.from(codeBlocks)) {
+    const parentPre = block.parentElement;
+    if (!parentPre) continue;
+    const rawChartCode = block.textContent?.trim() || '';
+    if (!rawChartCode) continue;
+
+    const chartId = `mermaid-svg-${Date.now()}-${++idCounter}`;
+    const chartWrapper = document.createElement('div');
+    chartWrapper.className = 'mermaid-chart-wrapper';
+
+    const chartHeader = document.createElement('div');
+    chartHeader.className = 'mermaid-chart-header';
+    chartHeader.innerHTML = `
+      <span class="mermaid-chart-title">📊 Visual Diagram / Chart</span>
+      <button type="button" class="mermaid-copy-btn">📋 Salin Source</button>
+    `;
+    const copyBtn = chartHeader.querySelector('.mermaid-copy-btn') as HTMLButtonElement;
+    if (copyBtn) {
+      copyBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        navigator.clipboard.writeText(rawChartCode).then(() => {
+          copyBtn.textContent = '✓ Tersalin';
+          setTimeout(() => {
+            copyBtn.textContent = '📋 Salin Source';
+          }, 2000);
+        });
+      });
+    }
+
+    const chartContent = document.createElement('div');
+    chartContent.className = 'mermaid-chart-content';
+    chartContent.id = chartId;
+
+    try {
+      const { svg } = await mermaid.render(chartId, rawChartCode);
+      chartContent.innerHTML = svg;
+      chartWrapper.append(chartHeader, chartContent);
+      parentPre.replaceWith(chartWrapper);
+    } catch {
+      // Keep original code block on parse failure
+    }
+  }
+}
+
 function renderChatMessages() {
   if (!chatMessages) return;
   const session = chatSessions.find((item) => item.id === activeChatSessionId);
@@ -619,6 +686,12 @@ function renderChatMessages() {
   }
   chatMessages.replaceChildren(...messageNodes);
   chatMessages.scrollTop = chatMessages.scrollHeight;
+
+  if (mermaidRenderTimer) clearTimeout(mermaidRenderTimer);
+  mermaidRenderTimer = setTimeout(() => {
+    if (chatMessages) renderMermaidDiagrams(chatMessages);
+  }, 100);
+
   if (chatMemoryContext) {
     chatMemoryContext.textContent = session.memory_context_count
       ? `${session.memory_context_count} memory relevan dipakai sebagai konteks respons terakhir.`
