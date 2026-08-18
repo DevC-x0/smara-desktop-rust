@@ -22,6 +22,20 @@ mermaid.initialize({
   securityLevel: 'loose',
   theme: 'dark',
   darkMode: true,
+  flowchart: {
+    useMaxWidth: true,
+    htmlLabels: true,
+    curve: 'basis',
+  },
+  er: {
+    useMaxWidth: true,
+  },
+  sequence: {
+    useMaxWidth: true,
+  },
+  gantt: {
+    useMaxWidth: true,
+  },
   themeVariables: {
     darkMode: true,
     background: '#050805',
@@ -34,6 +48,10 @@ mermaid.initialize({
     fontFamily: 'Inter, system-ui, sans-serif',
   },
 });
+
+if (typeof window !== 'undefined') {
+  (window as any).mermaid = mermaid;
+}
 
 type DesktopCapability = {
   id: string;

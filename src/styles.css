@@ -1554,9 +1554,19 @@ input, textarea, select {
   padding-bottom: 4px;
 }
 
-/* Mermaid Error Suppression */
+/* Mermaid Sandbox Measurement Container (Rendered off-screen so getBBox calculates correct SVG dimensions) */
 #dmermaid,
-div[id*="dmermaid"],
+div[id*="dmermaid"] {
+  position: fixed !important;
+  top: -9999px !important;
+  left: -9999px !important;
+  width: 2000px !important;
+  height: 2000px !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+  z-index: -9999 !important;
+}
+
 svg[aria-roledescription="error"],
 .error-icon,
 .error-text {
