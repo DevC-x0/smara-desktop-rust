@@ -29,6 +29,10 @@
   padding: 0;
 }
 
+[hidden] {
+  display: none !important;
+}
+
 body {
   font-family: var(--font-sans);
   background-color: var(--bg-canvas);
@@ -603,12 +607,14 @@ input, textarea, select {
 }
 
 /* Chat Section */
-.chat-panel {
-  display: flex;
+.chat-panel,
+.chat-panel.page-active {
+  display: flex !important;
   flex-direction: column;
   height: calc(100vh - 48px);
   padding: 0;
   max-width: 100%;
+  overflow: hidden;
 }
 
 .chat-header-bar {
@@ -618,6 +624,269 @@ input, textarea, select {
   padding: 8px 24px;
   border-bottom: 1px solid var(--border);
   background: var(--bg-sidebar);
+  position: relative;
+  z-index: 100;
+}
+
+/* Custom Session Dropdown Component */
+.session-dropdown {
+  position: relative;
+  display: inline-block;
+}
+
+.session-dropdown-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(18, 26, 18, 0.85);
+  border: 1px solid rgba(190, 242, 100, 0.18);
+  border-radius: 8px;
+  padding: 5px 12px;
+  color: var(--text-main);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 160ms cubic-bezier(0.16, 1, 0.3, 1);
+  user-select: none;
+  max-width: 380px;
+}
+
+.session-dropdown-btn:hover {
+  background: rgba(26, 38, 26, 0.95);
+  border-color: rgba(190, 242, 100, 0.45);
+  box-shadow: 0 0 16px -2px rgba(190, 242, 100, 0.15);
+}
+
+.session-dropdown-btn.active {
+  background: rgba(22, 34, 22, 1);
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(190, 242, 100, 0.2);
+}
+
+.session-btn-icon {
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+.session-btn-title {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 220px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.session-badge-pill {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 9999px;
+  background: rgba(190, 242, 100, 0.12);
+  color: #BEF264;
+  border: 1px solid rgba(190, 242, 100, 0.25);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.session-btn-chevron {
+  color: var(--text-muted);
+  flex-shrink: 0;
+  transition: transform 180ms ease;
+}
+
+.session-dropdown-btn.active .session-btn-chevron {
+  transform: rotate(180deg);
+  color: var(--accent);
+}
+
+/* Dropdown Menu Panel */
+.session-dropdown-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 1200;
+  width: 380px;
+  max-width: 90vw;
+  background: #090e09;
+  border: 1px solid rgba(190, 242, 100, 0.22);
+  border-radius: 12px;
+  box-shadow: 0 20px 40px -4px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(190, 242, 100, 0.08);
+  overflow: hidden;
+  backdrop-filter: blur(24px);
+  animation: sessionDropdownFadeIn 160ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes sessionDropdownFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.session-dropdown-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.session-search-wrapper {
+  position: relative;
+  flex: 1;
+  display: flex;
+  align-items: center;
+}
+
+.session-search-wrapper .search-icon {
+  position: absolute;
+  left: 9px;
+  color: var(--text-muted);
+  pointer-events: none;
+}
+
+.session-search-input {
+  width: 100%;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 5px 8px 5px 28px;
+  color: var(--text-main);
+  font-size: 12px;
+  outline: none;
+  transition: border-color 140ms ease;
+}
+
+.session-search-input:focus {
+  border-color: var(--accent);
+}
+
+.session-new-btn {
+  background: rgba(190, 242, 100, 0.12);
+  border: 1px solid rgba(190, 242, 100, 0.3);
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 5px 9px;
+  border-radius: 6px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 120ms ease;
+}
+
+.session-new-btn:hover {
+  background: rgba(190, 242, 100, 0.22);
+  border-color: var(--accent);
+}
+
+.session-dropdown-list {
+  max-height: 320px;
+  overflow-y: auto;
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.session-dropdown-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text-main);
+  cursor: pointer;
+  transition: all 120ms ease;
+  text-align: left;
+  width: 100%;
+}
+
+.session-dropdown-item:hover {
+  background: rgba(190, 242, 100, 0.07);
+  border-color: rgba(190, 242, 100, 0.15);
+}
+
+.session-dropdown-item.active {
+  background: rgba(190, 242, 100, 0.12);
+  border-color: rgba(190, 242, 100, 0.35);
+}
+
+.session-item-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow: hidden;
+  flex: 1;
+}
+
+.session-item-title-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.session-item-title {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-main);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.session-dropdown-item.active .session-item-title {
+  color: var(--accent);
+}
+
+.session-item-meta {
+  font-size: 10.5px;
+  color: var(--text-muted);
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.session-item-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.session-dropdown-item:hover .session-item-actions {
+  opacity: 1;
+}
+
+.session-item-delete-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  padding: 3px 5px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  transition: all 120ms ease;
+}
+
+.session-item-delete-btn:hover {
+  background: rgba(239, 68, 68, 0.2);
+  color: #ef4444;
+}
+
+.session-empty-notice {
+  padding: 24px 16px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--text-muted);
 }
 
 .chat-header-tools {
@@ -627,11 +896,12 @@ input, textarea, select {
 
 .chat-scroll-area {
   flex: 1;
-  overflow-y: auto;
-  padding: 24px 32px;
+  overflow: hidden;
+  padding: 16px 24px;
   display: flex;
   flex-direction: column;
   gap: 16px;
+  min-height: 0;
 }
 
 .chat-welcome-board {
@@ -665,6 +935,9 @@ input, textarea, select {
   max-width: 860px;
   margin: 0 auto;
   width: 100%;
+  flex: 1 1 0%;
+  min-height: 0;
+  overflow-y: auto;
 }
 
 /* Message Styles */

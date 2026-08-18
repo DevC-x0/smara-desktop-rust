@@ -295,6 +295,14 @@ const refreshProviderButton = document.querySelector<HTMLButtonElement>('#refres
 const errorPanel = document.querySelector<HTMLElement>('#launcher-error');
 const errorMessage = document.querySelector<HTMLElement>('#launcher-error-message');
 const chatSessionSelect = document.querySelector<HTMLSelectElement>('#chat-session-select');
+const sessionDropdown = document.querySelector<HTMLElement>('#session-dropdown');
+const sessionDropdownTrigger = document.querySelector<HTMLButtonElement>('#session-dropdown-trigger');
+const sessionDropdownMenu = document.querySelector<HTMLElement>('#session-dropdown-menu');
+const sessionDropdownActiveTitle = document.querySelector<HTMLElement>('#session-dropdown-active-title');
+const sessionDropdownCountBadge = document.querySelector<HTMLElement>('#session-dropdown-count-badge');
+const sessionDropdownItems = document.querySelector<HTMLElement>('#session-dropdown-items');
+const sessionSearchInput = document.querySelector<HTMLInputElement>('#session-search-input');
+const dropdownNewSessionBtn = document.querySelector<HTMLButtonElement>('#dropdown-new-session-btn');
 const sidebarNewChatButton = document.querySelector<HTMLButtonElement>('#sidebar-new-chat-button');
 const sidebarChatSessionList = document.querySelector<HTMLElement>('#sidebar-chat-session-list');
 const chatMessages = document.querySelector<HTMLElement>('#chat-messages');
@@ -575,8 +583,128 @@ function renderChatSessions() {
     }
     chatSessionSelect.value = activeChatSessionId;
   }
+  renderCustomSessionDropdown();
   renderSidebarChatSessions();
   if (deleteChatButton) deleteChatButton.disabled = !activeChatSessionId;
+}
+
+function renderCustomSessionDropdown() {
+  if (!sessionDropdown) return;
+  const activeSession = chatSessions.find((s) => s.id === activeChatSessionId);
+  if (sessionDropdownActiveTitle) {
+    sessionDropdownActiveTitle.textContent = activeSession ? (activeSession.title || 'Sesi Tanpa Judul') : 'Sesi Baru';
+  }
+  if (sessionDropdownCountBadge) {
+    const msgCount = activeSession ? activeSession.messages.length : 0;
+    sessionDropdownCountBadge.textContent = `${msgCount} pesan`;
+  }
+  renderCustomSessionDropdownList();
+}
+
+function renderCustomSessionDropdownList() {
+  if (!sessionDropdownItems) return;
+  const query = sessionSearchInput?.value.trim().toLowerCase() || '';
+  const filtered = query
+    ? chatSessions.filter((s) => (s.title || '').toLowerCase().includes(query))
+    : chatSessions;
+
+  if (filtered.length === 0) {
+    sessionDropdownItems.innerHTML = query
+      ? `<div class="session-empty-notice">Tidak ada sesi cocok dengan "${query}"</div>`
+      : `<div class="session-empty-notice">Belum ada sesi percakapan.</div>`;
+    return;
+  }
+
+  sessionDropdownItems.replaceChildren(...filtered.map((session) => {
+    const item = document.createElement('div');
+    item.className = 'session-dropdown-item';
+    const isActive = session.id === activeChatSessionId;
+    if (isActive) item.classList.add('active');
+
+    const mainCol = document.createElement('div');
+    mainCol.className = 'session-item-main';
+
+    const titleRow = document.createElement('div');
+    titleRow.className = 'session-item-title-row';
+    const titleSpan = document.createElement('span');
+    titleSpan.className = 'session-item-title';
+    titleSpan.textContent = session.title || 'Sesi Tanpa Judul';
+    titleRow.appendChild(titleSpan);
+
+    const metaRow = document.createElement('div');
+    metaRow.className = 'session-item-meta';
+    metaRow.innerHTML = `<span>${session.messages.length} pesan</span><span>•</span><span>${formatSessionTime(session.updated_at_ms)}</span>`;
+
+    mainCol.append(titleRow, metaRow);
+
+    const actionsCol = document.createElement('div');
+    actionsCol.className = 'session-item-actions';
+    const deleteBtn = document.createElement('button');
+    deleteBtn.type = 'button';
+    deleteBtn.className = 'session-item-delete-btn';
+    deleteBtn.title = 'Hapus sesi ini';
+    deleteBtn.textContent = '🗑️';
+
+    actionsCol.appendChild(deleteBtn);
+    item.append(mainCol, actionsCol);
+
+    item.addEventListener('click', (e) => {
+      e.stopPropagation();
+      openChatSession(session.id);
+      closeSessionDropdown();
+    });
+
+    deleteBtn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      if (confirm(`Hapus sesi "${session.title || 'Sesi Tanpa Judul'}"?`)) {
+        await deleteSessionById(session.id);
+      }
+    });
+
+    return item;
+  }));
+}
+
+function toggleSessionDropdown() {
+  if (!sessionDropdownMenu) return;
+  const isOpen = !sessionDropdownMenu.hidden;
+  if (isOpen) {
+    closeSessionDropdown();
+  } else {
+    openSessionDropdown();
+  }
+}
+
+function openSessionDropdown() {
+  if (!sessionDropdownMenu || !sessionDropdownTrigger) return;
+  sessionDropdownMenu.hidden = false;
+  sessionDropdownTrigger.classList.add('active');
+  sessionDropdownTrigger.setAttribute('aria-expanded', 'true');
+  if (sessionSearchInput) {
+    sessionSearchInput.value = '';
+    renderCustomSessionDropdownList();
+    setTimeout(() => sessionSearchInput.focus(), 60);
+  }
+}
+
+function closeSessionDropdown() {
+  if (!sessionDropdownMenu || !sessionDropdownTrigger) return;
+  sessionDropdownMenu.hidden = true;
+  sessionDropdownTrigger.classList.remove('active');
+  sessionDropdownTrigger.setAttribute('aria-expanded', 'false');
+}
+
+async function deleteSessionById(sessionId: string) {
+  try {
+    await invokeCommand<boolean>('delete_desktop_chat_session', { id: sessionId });
+    if (activeChatSessionId === sessionId) {
+      activeChatSessionId = '';
+    }
+    await loadChatSessions();
+    if (chatStatus) chatStatus.textContent = 'Sesi Chat dihapus.';
+  } catch (error) {
+    if (chatStatus) chatStatus.textContent = error instanceof Error ? error.message : String(error);
+  }
 }
 
 function formatSessionTime(timestamp: number) {
@@ -1335,7 +1463,7 @@ function getActionCategoryBadge(action: UnifiedAgentAction): { icon: string; lab
 function renderChatProcess(processes: ChatProcessEntry[], running: boolean) {
   const actions = aggregateAgentProcesses(processes);
   const container = document.createElement('div');
-  container.className = `agent-trace-card${running ? ' trace-running' : ' trace-completed'}`;
+  container.className = `chat-process agent-trace-card${running ? ' trace-running' : ' trace-completed'}`;
 
   // Trace Header Bar
   const header = document.createElement('div');
@@ -1522,6 +1650,12 @@ function renderChatProcess(processes: ChatProcessEntry[], running: boolean) {
     stepItem.append(actionDrawer);
     timeline.append(stepItem);
   });
+
+  const rawBox = document.createElement('div');
+  rawBox.className = 'chat-process-raw-text';
+  rawBox.style.cssText = 'position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0;';
+  rawBox.textContent = `${processes.map((p) => p.text).join(' ')} ${running ? 'Running' : 'Complete'}`;
+  container.append(rawBox);
 
   container.append(timeline);
   return container;
@@ -2659,6 +2793,27 @@ function startNewChat() {
 
 newChatButton?.addEventListener('click', startNewChat);
 sidebarNewChatButton?.addEventListener('click', startNewChat);
+sessionDropdownTrigger?.addEventListener('click', (e) => {
+  e.stopPropagation();
+  toggleSessionDropdown();
+});
+dropdownNewSessionBtn?.addEventListener('click', () => {
+  startNewChat();
+  closeSessionDropdown();
+});
+sessionSearchInput?.addEventListener('input', () => {
+  renderCustomSessionDropdownList();
+});
+document.addEventListener('click', (e) => {
+  if (sessionDropdown && !sessionDropdown.contains(e.target as Node)) {
+    closeSessionDropdown();
+  }
+});
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    closeSessionDropdown();
+  }
+});
 retryChatButton?.addEventListener('click', () => void retryLastChat());
 cancelChatStreamButton?.addEventListener('click', () => void cancelActiveChatStream());
 deleteChatButton?.addEventListener('click', () => void deleteActiveChatSession());
