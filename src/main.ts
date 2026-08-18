@@ -2,7 +2,12 @@ import { fileAssetUrl, invokeCommand, listenCommand } from './tauri-client';
 import { readImage as readClipboardImage } from '@tauri-apps/plugin-clipboard-manager';
 import { marked } from 'marked';
 import mermaid from 'mermaid';
+import DOMPurify from 'dompurify';
 import './styles.css';
+
+if (typeof window !== 'undefined') {
+  (window as any).DOMPurify = DOMPurify;
+}
 
 marked.setOptions({
   gfm: true,
