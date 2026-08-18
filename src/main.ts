@@ -628,7 +628,7 @@ async function renderMermaidDiagrams(container: HTMLElement) {
       continue;
     }
 
-    const chartId = `mermaid-svg-${Date.now()}-${++idCounter}`;
+    const chartId = `mermaid_svg_${Date.now()}_${++idCounter}`;
 
     try {
       const isValid = await mermaid.parse(cleanChartCode, { suppressErrors: true });
@@ -666,7 +666,8 @@ async function renderMermaidDiagrams(container: HTMLElement) {
       chartContent.innerHTML = svg;
       chartWrapper.append(chartHeader, chartContent);
       parentPre.replaceWith(chartWrapper);
-    } catch {
+    } catch (err) {
+      console.warn('[Mermaid Render Warning]', err);
       document.querySelectorAll('#dmermaid, [id*="dmermaid"], svg[aria-roledescription="error"]').forEach((el) => {
         if (!el.closest('.mermaid-chart-content')) {
           el.remove();

@@ -1091,7 +1091,11 @@ fn execute(root: &Path, tool: &str, args: &Value) -> Result<String, String> {
         "run_command" => {
             let command = get_string(args, "command")?;
             #[cfg(unix)]
-            let mut cmd = std::process::Command::new("sh");
+            let mut cmd = if std::path::Path::new("/bin/bash").exists() {
+                std::process::Command::new("/bin/bash")
+            } else {
+                std::process::Command::new("sh")
+            };
             #[cfg(unix)]
             cmd.args(["-c", command]);
 
