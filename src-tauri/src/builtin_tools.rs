@@ -1091,21 +1091,32 @@ fn execute(root: &Path, tool: &str, args: &Value) -> Result<String, String> {
         "run_command" => {
             let command = get_string(args, "command")?;
             #[cfg(unix)]
-            let mut cmd = if std::path::Path::new("/bin/bash").exists() {
-                std::process::Command::new("/bin/bash")
-            } else {
-                std::process::Command::new("sh")
+            let output = {
+                let shell = if std::path::Path::new("/bin/bash").exists() { "/bin/bash" } else { "sh" };
+                let mut child = std::process::Command::new(shell)
+                    .arg("-s")
+                    .current_dir(root)
+                    .stdin(std::process::Stdio::piped())
+                    .stdout(std::process::Stdio::piped())
+                    .stderr(std::process::Stdio::piped())
+                    .spawn()
+                    .map_err(|error| format!("Failed to spawn shell '{shell}': {error}"))?;
+
+                if let Some(mut stdin) = child.stdin.take() {
+                    use std::io::Write;
+                    let _ = stdin.write_all(command.as_bytes());
+                }
+                child.wait_with_output().map_err(|error| format!("Failed to execute command: {error}"))?
             };
-            #[cfg(unix)]
-            cmd.args(["-c", command]);
 
             #[cfg(not(unix))]
-            let mut cmd = std::process::Command::new("cmd");
-            #[cfg(not(unix))]
-            cmd.args(["/C", command]);
+            let output = {
+                let mut cmd = std::process::Command::new("cmd");
+                cmd.args(["/C", command]);
+                cmd.current_dir(root);
+                cmd.output().map_err(|error| format!("Failed to execute command '{command}': {error}"))?
+            };
 
-            cmd.current_dir(root);
-            let output = cmd.output().map_err(|error| format!("Failed to execute command '{command}': {error}"))?;
             let stdout = String::from_utf8_lossy(&output.stdout);
             let stderr = String::from_utf8_lossy(&output.stderr);
             let code = output.status.code().unwrap_or(-1);
