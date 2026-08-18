@@ -898,6 +898,12 @@ function openChatSession(sessionId: string) {
   chatInput?.focus();
 }
 
+function createSvgFromTemplate(svgMarkup: string): SVGElement {
+  const container = document.createElement('div');
+  container.innerHTML = svgMarkup.trim();
+  return container.querySelector('svg')!;
+}
+
 function renderSidebarChatSessions() {
   if (!sidebarChatSessionList) return;
 
@@ -947,12 +953,22 @@ function renderSidebarChatSessions() {
     headerLeft.className = 'group-header-left';
 
     const chevron = document.createElement('span');
-    chevron.className = 'group-chevron';
-    chevron.textContent = isCollapsed ? '▸' : '▾';
+    chevron.className = `group-chevron${isCollapsed ? ' collapsed' : ' expanded'}`;
+    chevron.append(createSvgFromTemplate(
+      '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>'
+    ));
 
     const icon = document.createElement('span');
     icon.className = 'group-icon';
-    icon.textContent = isDefault ? '🌐' : '📁';
+    if (isDefault) {
+      icon.append(createSvgFromTemplate(
+        '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>'
+      ));
+    } else {
+      icon.append(createSvgFromTemplate(
+        '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>'
+      ));
+    }
 
     const title = document.createElement('span');
     title.className = 'group-title';
@@ -972,8 +988,10 @@ function renderSidebarChatSessions() {
     const newChatInGroupBtn = document.createElement('button');
     newChatInGroupBtn.type = 'button';
     newChatInGroupBtn.className = 'group-btn-action';
-    newChatInGroupBtn.title = `Buat sesi baru di folder ${displayName}`;
-    newChatInGroupBtn.textContent = '+';
+    newChatInGroupBtn.title = `Buat sesi baru di ${displayName}`;
+    newChatInGroupBtn.append(createSvgFromTemplate(
+      '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>'
+    ));
     newChatInGroupBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       startNewChatInWorkspace(wsName);
@@ -985,7 +1003,9 @@ function renderSidebarChatSessions() {
       deleteGroupBtn.type = 'button';
       deleteGroupBtn.className = 'group-btn-action group-btn-delete';
       deleteGroupBtn.title = `Hapus folder ${displayName}`;
-      deleteGroupBtn.textContent = '×';
+      deleteGroupBtn.append(createSvgFromTemplate(
+        '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>'
+      ));
       deleteGroupBtn.addEventListener('click', async (e) => {
         e.stopPropagation();
         if (confirm(`Hapus folder "${displayName}"? Sesi di dalamnya akan dipindahkan ke General.`)) {
@@ -1016,7 +1036,7 @@ function renderSidebarChatSessions() {
       if (sessions.length === 0) {
         const emptyEl = document.createElement('div');
         emptyEl.className = 'group-session-empty';
-        emptyEl.textContent = 'Belum ada sesi.';
+        emptyEl.textContent = 'Belum ada sesi';
         sessionListEl.append(emptyEl);
       } else {
         sessions.forEach((session) => {
@@ -1028,15 +1048,26 @@ function renderSidebarChatSessions() {
           sessionBtn.className = `sidebar-chat-session-btn sidebar-chat-session${session.id === activeChatSessionId ? ' active' : ''}`;
           sessionBtn.title = session.title;
 
+          const sessionHeaderRow = document.createElement('div');
+          sessionHeaderRow.className = 'session-header-row';
+
+          const chatIcon = document.createElement('span');
+          chatIcon.className = 'session-chat-icon';
+          chatIcon.append(createSvgFromTemplate(
+            '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>'
+          ));
+
           const sessionTitle = document.createElement('span');
           sessionTitle.className = 'session-title-text';
           sessionTitle.textContent = session.title || 'Sesi tanpa judul';
+
+          sessionHeaderRow.append(chatIcon, sessionTitle);
 
           const sessionMeta = document.createElement('small');
           sessionMeta.className = 'session-meta-text';
           sessionMeta.textContent = `${session.messages.length} pesan · ${formatSessionTime(session.updated_at_ms)}`;
 
-          sessionBtn.append(sessionTitle, sessionMeta);
+          sessionBtn.append(sessionHeaderRow, sessionMeta);
           sessionBtn.addEventListener('click', () => {
             activeWorkspaceName = wsName;
             openChatSession(session.id);
@@ -1047,7 +1078,9 @@ function renderSidebarChatSessions() {
           optionsBtn.type = 'button';
           optionsBtn.className = 'session-options-btn';
           optionsBtn.title = 'Pindahkan sesi ke folder lain';
-          optionsBtn.textContent = '⋮';
+          optionsBtn.append(createSvgFromTemplate(
+            '<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="1.5"></circle><circle cx="12" cy="5" r="1.5"></circle><circle cx="12" cy="19" r="1.5"></circle></svg>'
+          ));
           optionsBtn.addEventListener('click', (e) => {
             e.stopPropagation();
             openMoveSessionModal(session);
