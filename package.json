@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "tauri dev --release",
+    "dev": "tauri dev",
     "dev:debug": "tauri dev",
     "build": "tauri build",
     "frontend:dev": "vite",
