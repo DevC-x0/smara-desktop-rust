@@ -1648,22 +1648,29 @@ function renderChatProcess(processes: ChatProcessEntry[], running: boolean) {
   const toggleBtn = document.createElement('button');
   toggleBtn.type = 'button';
   toggleBtn.className = 'trace-toggle-btn';
-  toggleBtn.textContent = running ? 'Tutup ▴' : 'Detail Trajectory ▾';
+  toggleBtn.textContent = 'Tutup ▴';
 
   headerRight.append(copyBtn, toggleBtn);
   header.append(headerLeft, headerRight);
   container.append(header);
 
-  // Trace Steps Timeline
+  // Trace Steps Timeline - Kept open by default so trajectory details remain visible after response finishes
   const timeline = document.createElement('div');
   timeline.className = 'trace-timeline';
-  if (!running) {
-    timeline.classList.add('collapsed');
-  }
 
-  toggleBtn.addEventListener('click', () => {
+  const toggleTimeline = () => {
     const isCollapsed = timeline.classList.toggle('collapsed');
     toggleBtn.textContent = isCollapsed ? 'Detail Trajectory ▾' : 'Tutup ▴';
+  };
+
+  toggleBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    toggleTimeline();
+  });
+
+  header.style.cursor = 'pointer';
+  header.addEventListener('click', () => {
+    toggleTimeline();
   });
 
   const startTime = actions[0]?.startTime ?? Date.now();
