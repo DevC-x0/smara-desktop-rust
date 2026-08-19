@@ -609,6 +609,23 @@ fn stream_response_lines(
             return Err("Streaming Chat request was cancelled.".to_string());
         }
         let line = line.map_err(|error| format!("Failed to read provider stream: {error}"))?;
+        let trimmed = line.trim();
+        if trimmed.is_empty() || trimmed.starts_with(':') {
+            continue;
+        }
+
+        // Check if raw JSON error was returned instead of SSE
+        if trimmed.starts_with('{') {
+            if let Ok(json_val) = serde_json::from_str::<Value>(trimmed) {
+                if let Some(err_msg) = json_val.pointer("/error/message").and_then(Value::as_str) {
+                    return Err(format!("Provider Error: {err_msg}"));
+                }
+                if let Some(err_str) = json_val.get("error").and_then(Value::as_str) {
+                    return Err(format!("Provider Error: {err_str}"));
+                }
+            }
+        }
+
         let Some(data) = line.strip_prefix("data:") else {
             continue;
         };
@@ -618,6 +635,13 @@ fn stream_response_lines(
         }
         let event: Value = serde_json::from_str(data)
             .map_err(|error| format!("Provider stream returned invalid JSON: {error}"))?;
+
+        if let Some(err_msg) = event.pointer("/error/message").and_then(Value::as_str) {
+            return Err(format!("Provider Error: {err_msg}"));
+        }
+        if let Some(err_str) = event.get("error").and_then(Value::as_str) {
+            return Err(format!("Provider Error: {err_str}"));
+        }
 
         // 1. Check reasoning / thought delta
         if let Some(reasoning) = event.pointer("/choices/0/delta/reasoning_content")

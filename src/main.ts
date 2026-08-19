@@ -3549,6 +3549,9 @@ async function sendChatMessageText(message: string, sessionId: string, attachmen
       ? [existing, ...chatSessions.filter((session) => session.id !== existing.id)]
       : chatSessions.filter((session) => session.id !== temporarySessionId);
     activeChatSessionId = existing?.id ?? '';
+    if (chatInput && !chatInput.value && message) {
+      chatInput.value = message;
+    }
     pendingChatAttachments = attachments;
     renderPendingChatAttachments();
     renderChatSessions();
