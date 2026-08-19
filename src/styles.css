@@ -2787,6 +2787,7 @@ svg[aria-roledescription="error"],
 .file-tree-node {
   display: flex;
   flex-direction: column;
+  contain: content;
 }
 
 .file-tree-row {
@@ -2799,8 +2800,9 @@ svg[aria-roledescription="error"],
   font-family: var(--font-mono);
   color: #94A3B8;
   cursor: pointer;
-  transition: all 100ms ease;
+  transition: background 80ms ease, color 80ms ease;
   user-select: none;
+  contain: layout style;
 }
 
 .file-tree-row:hover {
@@ -2812,6 +2814,7 @@ svg[aria-roledescription="error"],
   font-size: 11px;
   width: 14px;
   text-align: center;
+  flex-shrink: 0;
 }
 
 .file-tree-name {
@@ -2825,6 +2828,7 @@ svg[aria-roledescription="error"],
   font-size: 9.5px;
   color: #475569;
   margin-left: auto;
+  flex-shrink: 0;
 }
 
 .file-tree-children {
@@ -2834,6 +2838,7 @@ svg[aria-roledescription="error"],
   display: flex;
   flex-direction: column;
   gap: 1px;
+  contain: content;
 }
 
 .file-tree-children.collapsed {

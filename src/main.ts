@@ -555,7 +555,7 @@ let atMentionSelectedIndex = 0;
 let workspacesList: DesktopWorkspace[] = [];
 let activeWorkspaceName = 'default';
 const collapsedWorkspaces = new Set<string>();
-const collapsedTreeDirs = new Set<string>();
+const expandedTreeDirs = new Set<string>();
 let pendingMoveSessionId: string | null = null;
 
 let chatSessions: DesktopChatSession[] = [];
@@ -1012,11 +1012,11 @@ function renderFileNodeElement(node: WorkspaceFileNode): HTMLElement {
   row.className = 'file-tree-row';
   row.title = node.rel_path;
 
-  const isCollapsed = collapsedTreeDirs.has(node.path);
+  const isExpanded = expandedTreeDirs.has(node.path);
 
   const iconSpan = document.createElement('span');
   iconSpan.className = 'file-tree-icon';
-  iconSpan.textContent = node.is_dir ? (isCollapsed ? '📁' : '📂') : getFileIcon(node);
+  iconSpan.textContent = node.is_dir ? (isExpanded ? '📂' : '📁') : getFileIcon(node);
 
   const nameSpan = document.createElement('span');
   nameSpan.className = 'file-tree-name';
@@ -1031,10 +1031,10 @@ function renderFileNodeElement(node: WorkspaceFileNode): HTMLElement {
   row.append(iconSpan, nameSpan, sizeSpan);
   container.append(row);
 
-  if (node.is_dir && node.children) {
+  if (node.is_dir && node.children && node.children.length > 0) {
     const childrenContainer = document.createElement('div');
     childrenContainer.className = 'file-tree-children';
-    if (isCollapsed) {
+    if (!isExpanded) {
       childrenContainer.classList.add('collapsed');
     }
     for (const child of node.children) {
@@ -1043,17 +1043,27 @@ function renderFileNodeElement(node: WorkspaceFileNode): HTMLElement {
     container.append(childrenContainer);
 
     row.addEventListener('click', () => {
-      if (collapsedTreeDirs.has(node.path)) {
-        collapsedTreeDirs.delete(node.path);
-        childrenContainer.classList.remove('collapsed');
-        iconSpan.textContent = '📂';
-      } else {
-        collapsedTreeDirs.add(node.path);
+      if (expandedTreeDirs.has(node.path)) {
+        expandedTreeDirs.delete(node.path);
         childrenContainer.classList.add('collapsed');
         iconSpan.textContent = '📁';
+      } else {
+        expandedTreeDirs.add(node.path);
+        childrenContainer.classList.remove('collapsed');
+        iconSpan.textContent = '📂';
       }
     });
-  } else if (!node.is_dir) {
+  } else if (node.is_dir) {
+    row.addEventListener('click', () => {
+      if (expandedTreeDirs.has(node.path)) {
+        expandedTreeDirs.delete(node.path);
+        iconSpan.textContent = '📁';
+      } else {
+        expandedTreeDirs.add(node.path);
+        iconSpan.textContent = '📂';
+      }
+    });
+  } else {
     row.addEventListener('click', () => {
       void openFilePreviewModal(node);
     });

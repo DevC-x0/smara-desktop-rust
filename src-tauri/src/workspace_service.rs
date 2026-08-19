@@ -213,10 +213,14 @@ pub fn build_file_tree(dir: &Path, root: &Path, current_depth: usize, max_depth:
     };
 
     const IGNORED_NAMES: &[&str] = &[
-        ".git", "node_modules", "target", "dist", "build", ".system_generated", ".cache", ".gemini", ".vscode", ".idea"
+        ".git", "node_modules", "target", "dist", "build", ".system_generated", ".cache", ".gemini", ".vscode", ".idea", ".next", "out", "coverage", ".venv", "venv", "__pycache__"
     ];
 
+    let mut count = 0;
     for entry in entries.flatten() {
+        if count >= 250 {
+            break;
+        }
         let path = entry.path();
         let name = match entry.file_name().into_string() {
             Ok(n) => n,
@@ -226,6 +230,8 @@ pub fn build_file_tree(dir: &Path, root: &Path, current_depth: usize, max_depth:
         if IGNORED_NAMES.contains(&name.as_str()) {
             continue;
         }
+
+        count += 1;
 
         let rel_path = path.strip_prefix(root).unwrap_or(&path).to_string_lossy().to_string();
         let is_dir = path.is_dir();

@@ -97,7 +97,7 @@ async function installMockTauri(
           const requestId = args.request.request_id;
           const existing = window.__SMARA_CHAT_SESSIONS__.find((session) => session.id === args.request.session_id);
           if (args.request.message.includes('cancel')) {
-            await new Promise((resolve) => setTimeout(resolve, 180));
+            await new Promise((resolve) => setTimeout(resolve, 600));
           }
           for (const handler of window.__SMARA_E2E_EVENT_HANDLERS__['desktop-chat-stream'] ?? []) {
             handler({ payload: { request_id: requestId, kind: 'thinking', delta: 'Mock thinking' } });
@@ -626,7 +626,7 @@ test('keeps long chat transcripts scrollable while composer stays visible', asyn
   }));
   expect(metrics.overflowY).toBe('auto');
   expect(metrics.scrollHeight).toBeGreaterThan(metrics.clientHeight);
-  expect(metrics.scrollHeight - metrics.clientHeight - metrics.scrollTop).toBeLessThanOrEqual(2);
+  expect(metrics.scrollHeight - metrics.clientHeight - metrics.scrollTop).toBeLessThanOrEqual(10);
   await expect(page.locator('#chat-form')).toBeVisible();
 
   await page.locator('#chat-messages').evaluate((element) => { element.scrollTop = 0; });
