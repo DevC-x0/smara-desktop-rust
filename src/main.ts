@@ -1,7 +1,6 @@
 import { fileAssetUrl, invokeCommand, listenCommand } from './tauri-client';
 import { readImage as readClipboardImage } from '@tauri-apps/plugin-clipboard-manager';
 import { marked } from 'marked';
-import mermaid from 'mermaid';
 import DOMPurifyFactory from 'dompurify';
 import './styles.css';
 
@@ -16,41 +15,66 @@ marked.setOptions({
   breaks: true,
 });
 
-mermaid.initialize({
-  startOnLoad: false,
-  suppressErrorRendering: true,
-  securityLevel: 'loose',
-  theme: 'dark',
-  darkMode: true,
-  flowchart: {
-    useMaxWidth: true,
-    htmlLabels: true,
-    curve: 'basis',
-  },
-  er: {
-    useMaxWidth: true,
-  },
-  sequence: {
-    useMaxWidth: true,
-  },
-  gantt: {
-    useMaxWidth: true,
-  },
-  themeVariables: {
-    darkMode: true,
-    background: '#050805',
-    primaryColor: '#1A291A',
-    primaryTextColor: '#E2E8F0',
-    primaryBorderColor: '#BEF264',
-    lineColor: '#BEF264',
-    secondaryColor: '#142014',
-    tertiaryColor: '#0E170E',
-    fontFamily: 'Inter, system-ui, sans-serif',
-  },
-});
+let mermaidInstance: any = null;
+let isMermaidInitialized = false;
+
+async function getMermaid() {
+  if (!mermaidInstance) {
+    try {
+      const mod = await import('mermaid');
+      mermaidInstance = mod.default || mod;
+    } catch (err) {
+      console.warn('[Mermaid Load Error]', err);
+      return null;
+    }
+  }
+  if (!isMermaidInitialized && mermaidInstance) {
+    try {
+      mermaidInstance.initialize({
+        startOnLoad: false,
+        suppressErrorRendering: true,
+        securityLevel: 'loose',
+        theme: 'dark',
+        darkMode: true,
+        flowchart: {
+          useMaxWidth: true,
+          htmlLabels: true,
+          curve: 'basis',
+        },
+        er: {
+          useMaxWidth: true,
+        },
+        sequence: {
+          useMaxWidth: true,
+        },
+        gantt: {
+          useMaxWidth: true,
+        },
+        themeVariables: {
+          darkMode: true,
+          background: '#050805',
+          primaryColor: '#1A291A',
+          primaryTextColor: '#E2E8F0',
+          primaryBorderColor: '#BEF264',
+          lineColor: '#BEF264',
+          secondaryColor: '#142014',
+          tertiaryColor: '#0E170E',
+          fontFamily: 'Inter, system-ui, sans-serif',
+        },
+      });
+      isMermaidInitialized = true;
+      if (typeof window !== 'undefined') {
+        (window as any).mermaid = mermaidInstance;
+      }
+    } catch (err) {
+      console.warn('[Mermaid Init Warning]', err);
+    }
+  }
+  return mermaidInstance;
+}
 
 if (typeof window !== 'undefined') {
-  (window as any).mermaid = mermaid;
+  (window as any).getMermaid = getMermaid;
 }
 
 type DesktopCapability = {
@@ -2167,13 +2191,16 @@ async function renderMermaidDiagrams(container: HTMLElement) {
       continue;
     }
 
+    const mermaidApi = await getMermaid();
+    if (!mermaidApi) continue;
+
     const chartId = `mermaid_svg_${Date.now()}_${++idCounter}`;
 
     try {
-      const isValid = await mermaid.parse(cleanChartCode, { suppressErrors: true });
+      const isValid = await mermaidApi.parse(cleanChartCode, { suppressErrors: true });
       if (!isValid) continue;
 
-      const { svg } = await mermaid.render(chartId, cleanChartCode);
+      const { svg } = await mermaidApi.render(chartId, cleanChartCode);
       if (!svg || svg.includes('aria-roledescription="error"') || svg.includes('class="error-icon"')) {
         continue;
       }
@@ -2231,6 +2258,45 @@ function scheduleChatStreamRender() {
   });
 }
 
+function renderStreamingMessageInPlace(session: DesktopChatSession, targetStreamId: string): boolean {
+  if (!chatMessages) return false;
+
+  const streamingItem = chatMessages.querySelector<HTMLElement>('.chat-message-streaming');
+  const targetMessage = session.messages.find((m) => m.id === targetStreamId);
+
+  if (!streamingItem || !targetMessage) {
+    return false;
+  }
+
+  const liveProcessContainer = chatMessages.querySelector<HTMLElement>('.chat-process-live');
+  if (liveProcessContainer && activeChatProcesses.length > 0) {
+    const updated = renderChatProcess(activeChatProcesses, true);
+    updated.classList.add('chat-process-live');
+    liveProcessContainer.replaceWith(updated);
+  } else if (!liveProcessContainer && activeChatProcesses.length > 0) {
+    const newProcess = renderChatProcess(activeChatProcesses, true);
+    newProcess.classList.add('chat-process-live');
+    streamingItem.before(newProcess);
+  }
+
+  const body = streamingItem.querySelector<HTMLElement>('.chat-message-body');
+  if (body) {
+    if (targetMessage.content) {
+      body.innerHTML = marked.parse(targetMessage.content) as string;
+    } else {
+      body.innerHTML = '<div class="typing-indicator"><span></span><span></span><span></span></div>';
+    }
+  }
+
+  updateChatTokenGauge(session);
+
+  if (!userScrolledUp) {
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+  }
+
+  return true;
+}
+
 function renderChatMessages() {
   if (!chatMessages) return;
   const session = chatSessions.find((item) => item.id === activeChatSessionId);
@@ -2239,6 +2305,19 @@ function renderChatMessages() {
     if (chatMemoryContext) chatMemoryContext.textContent = '';
     return;
   }
+
+  if (activeChatStreamRequestId) {
+    const targetStreamId = `stream-${activeChatStreamRequestId}`;
+    if (renderStreamingMessageInPlace(session, targetStreamId)) {
+      return;
+    }
+  }
+
+  renderFullChatMessages(session);
+}
+
+function renderFullChatMessages(session: DesktopChatSession) {
+  if (!chatMessages) return;
   const activeProcessTargetId = activeChatStreamRequestId ? `stream-${activeChatStreamRequestId}` : '';
   const sessionProcessHistory = chatProcessHistory.get(session.id);
   const messageNodes: HTMLElement[] = [];
@@ -2250,7 +2329,9 @@ function renderChatMessages() {
       messageNodes.push(renderChatProcess(historicalProcesses, false));
     }
     if (activeChatProcesses.length > 0 && message.id === activeProcessTargetId) {
-      messageNodes.push(renderChatProcess(activeChatProcesses, true));
+      const liveProcessEl = renderChatProcess(activeChatProcesses, true);
+      liveProcessEl.classList.add('chat-process-live');
+      messageNodes.push(liveProcessEl);
     }
     const item = document.createElement('div');
     item.className = `chat-message chat-message-${message.role}`;
