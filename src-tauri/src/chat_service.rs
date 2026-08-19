@@ -731,9 +731,9 @@ fn request_streaming_completion(
     config: &DesktopProviderConfig,
     messages: &[Value],
     tools: &[Value],
-    on_reasoning: impl FnMut(&str),
-    on_delta: impl FnMut(&str),
-    should_cancel: impl FnMut() -> bool,
+    mut on_reasoning: impl FnMut(&str),
+    mut on_delta: impl FnMut(&str),
+    mut should_cancel: impl FnMut() -> bool,
 ) -> Result<StreamCompletionOutput, String> {
     if config.provider == "anthropic" {
         return request_anthropic_streaming_completion(
@@ -744,13 +744,16 @@ fn request_streaming_completion(
             should_cancel,
         );
     }
+    let is_antigravity = config.model.contains("ag/") || config.model.contains("antigravity");
+    let effective_tools = if is_antigravity { &[] } else { tools };
+
     let mut payload = json!({
         "model": config.model,
         "stream": true,
         "messages": messages,
     });
-    if !tools.is_empty() {
-        payload["tools"] = json!(tools);
+    if !effective_tools.is_empty() {
+        payload["tools"] = json!(effective_tools);
     }
     let client = Client::builder()
         .timeout(CHAT_TIMEOUT)
@@ -766,7 +769,7 @@ fn request_streaming_completion(
     let status = response.status();
     if !status.is_success() {
         let body = response.text().unwrap_or_default();
-        if !tools.is_empty() && (status.as_u16() == 400 || status.as_u16() == 422) {
+        if !effective_tools.is_empty() && (status.as_u16() == 400 || status.as_u16() == 422) {
             let fallback_payload = json!({
                 "model": config.model,
                 "stream": true,
@@ -789,12 +792,38 @@ fn request_streaming_completion(
         }
         return Err(format!("Provider stream HTTP error {status}: {body}"));
     }
-    stream_response_lines(
+    let res = stream_response_lines(
         response,
-        on_reasoning,
-        on_delta,
-        should_cancel,
-    )
+        &mut on_reasoning,
+        &mut on_delta,
+        &mut should_cancel,
+    );
+
+    if let Err(ref err_msg) = res {
+        if !effective_tools.is_empty() && (err_msg.contains("400") || err_msg.contains("bad_request") || err_msg.contains("Schema") || err_msg.contains("tools")) {
+            let fallback_payload = json!({
+                "model": config.model,
+                "stream": true,
+                "messages": messages,
+            });
+            let mut retry_req = client.post(chat_url(config)).json(&fallback_payload);
+            if let Some(key) = provider_api_key(&config.provider) {
+                retry_req = retry_req.bearer_auth(key);
+            }
+            if let Ok(retry_resp) = retry_req.send() {
+                if retry_resp.status().is_success() {
+                    return stream_response_lines(
+                        retry_resp,
+                        on_reasoning,
+                        on_delta,
+                        should_cancel,
+                    );
+                }
+            }
+        }
+    }
+
+    res
 }
 
 fn request_anthropic_streaming_completion(
