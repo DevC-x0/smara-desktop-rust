@@ -28,7 +28,7 @@ impl Default for DesktopProviderConfig {
     fn default() -> Self {
         Self {
             provider: "custom".to_string(),
-            model: "cx/gpt-5.5".to_string(),
+            model: "9r/ag/gemini-3.7-flash-high".to_string(),
             endpoint: "http://127.0.0.1:20128/v1".to_string(),
         }
     }
