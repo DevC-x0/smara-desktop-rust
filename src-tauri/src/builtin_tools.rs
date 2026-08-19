@@ -1574,31 +1574,35 @@ fn execute(root: &Path, tool: &str, args: &Value) -> Result<String, String> {
         }
         "run_command" => {
             let command = get_string(args, "command")?;
+            let mut effective_command = command.to_string();
+            if effective_command.starts_with("npx ") && !effective_command.contains("--yes") && !effective_command.contains("-y") {
+                effective_command = effective_command.replacen("npx ", "npx --yes ", 1);
+            }
+
             #[cfg(unix)]
             let output = {
                 let shell = if std::path::Path::new("/bin/bash").exists() { "/bin/bash" } else { "sh" };
-                let mut child = std::process::Command::new(shell)
-                    .arg("-s")
+                let mut cmd = std::process::Command::new(shell);
+                cmd.args(["-c", &effective_command])
                     .current_dir(root)
-                    .stdin(std::process::Stdio::piped())
+                    .stdin(std::process::Stdio::null())
                     .stdout(std::process::Stdio::piped())
                     .stderr(std::process::Stdio::piped())
-                    .spawn()
-                    .map_err(|error| format!("Failed to spawn shell '{shell}': {error}"))?;
+                    .env("CI", "1")
+                    .env("NONINTERACTIVE", "1")
+                    .env("DEBIAN_FRONTEND", "noninteractive");
 
-                if let Some(mut stdin) = child.stdin.take() {
-                    use std::io::Write;
-                    let _ = stdin.write_all(command.as_bytes());
-                }
-                child.wait_with_output().map_err(|error| format!("Failed to execute command: {error}"))?
+                cmd.output().map_err(|error| format!("Failed to execute command '{effective_command}': {error}"))?
             };
 
             #[cfg(not(unix))]
             let output = {
                 let mut cmd = std::process::Command::new("cmd");
-                cmd.args(["/C", command]);
+                cmd.args(["/C", &effective_command]);
                 cmd.current_dir(root);
-                cmd.output().map_err(|error| format!("Failed to execute command '{command}': {error}"))?
+                cmd.stdin(std::process::Stdio::null());
+                cmd.env("CI", "1");
+                cmd.output().map_err(|error| format!("Failed to execute command '{effective_command}': {error}"))?
             };
 
             let stdout = String::from_utf8_lossy(&output.stdout);
