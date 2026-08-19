@@ -3571,10 +3571,23 @@ async function sendChatMessageText(message: string, sessionId: string, attachmen
       return;
     }
     activeChatStreamRequestId = '';
-    chatSessions = existing
-      ? [existing, ...chatSessions.filter((session) => session.id !== existing.id)]
-      : chatSessions.filter((session) => session.id !== temporarySessionId);
-    activeChatSessionId = existing?.id ?? '';
+    const messageText = error instanceof Error ? error.message : String(error);
+
+    const session = chatSessions.find((s) => s.id === temporarySessionId || s.id === activeChatSessionId);
+    if (session) {
+      const streamMsg = session.messages.find((m) => m.id === `stream-${requestId}`);
+      if (streamMsg) {
+        if (!streamMsg.content) {
+          streamMsg.content = `⚠️ **Error**: ${messageText}\n\n*Silakan periksa model atau coba kirim ulang.*`;
+        } else {
+          streamMsg.content += `\n\n> ⚠️ *Stream terputus: ${messageText}*`;
+        }
+      }
+      activeChatSessionId = session.id;
+    } else {
+      activeChatSessionId = existing?.id ?? '';
+    }
+
     if (chatInput && !chatInput.value && message) {
       chatInput.value = message;
     }
@@ -3582,7 +3595,6 @@ async function sendChatMessageText(message: string, sessionId: string, attachmen
     renderPendingChatAttachments();
     renderChatSessions();
     renderChatMessages();
-    const messageText = error instanceof Error ? error.message : String(error);
     if (chatStatus) {
       chatStatus.textContent = /cancelled|dibatalkan/i.test(messageText)
         ? 'Streaming dibatalkan. Pesan terakhir bisa dicoba ulang.'
