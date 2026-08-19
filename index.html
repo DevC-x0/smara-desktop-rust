@@ -266,34 +266,35 @@
                     </svg>
                   </button>
                   <div id="model-switcher-menu" class="model-switcher-menu" hidden>
+                    <input id="model-search-input" class="model-search-input" placeholder="🔍 Filter model (Gemini, Claude, GPT)..." />
                     <div class="model-menu-section">
-                      <span class="model-menu-label">Preset Cloud Models</span>
+                      <span class="model-menu-label">Recommended Active</span>
+                      <button class="model-option-btn" type="button" data-provider="custom" data-model="9r/ag/gemini-3.7-flash-high" data-endpoint="http://127.0.0.1:20128/v1">
+                        <span class="model-opt-icon">✨</span>
+                        <span class="model-opt-name">Gemini 3.7 Flash High</span>
+                      </button>
                       <button class="model-option-btn" type="button" data-provider="custom" data-model="cx/gpt-5.5" data-endpoint="http://127.0.0.1:20128/v1">
                         <span class="model-opt-icon">⚡</span>
                         <span class="model-opt-name">GPT-5.5 (Custom)</span>
                       </button>
                       <button class="model-option-btn" type="button" data-provider="openai" data-model="gpt-4o" data-endpoint="https://api.openai.com/v1">
-                        <span class="model-opt-icon">✨</span>
+                        <span class="model-opt-icon">🤖</span>
                         <span class="model-opt-name">GPT-4o (OpenAI)</span>
                       </button>
                       <button class="model-option-btn" type="button" data-provider="anthropic" data-model="claude-3-7-sonnet" data-endpoint="https://api.anthropic.com/v1">
                         <span class="model-opt-icon">🟣</span>
                         <span class="model-opt-name">Claude 3.7 Sonnet</span>
                       </button>
-                      <button class="model-option-btn" type="button" data-provider="openrouter" data-model="deepseek/deepseek-r1" data-endpoint="https://openrouter.ai/api/v1">
-                        <span class="model-opt-icon">🧠</span>
-                        <span class="model-opt-name">DeepSeek R1</span>
-                      </button>
                     </div>
                     <div class="model-menu-section">
                       <div class="model-section-header">
-                        <span class="model-menu-label">Local Models</span>
-                        <button id="detect-local-models-btn" class="btn-detect-local" type="button" title="Deteksi Ollama / LM Studio">
-                          <span>🔄 Deteksi</span>
+                        <span class="model-menu-label">OmniRoute & Local Models</span>
+                        <button id="detect-local-models-btn" class="btn-detect-local" type="button" title="Scan OmniRoute / Ollama / LM Studio">
+                          <span>🔄 Scan Models</span>
                         </button>
                       </div>
                       <div id="detected-local-models-list" class="detected-models-list">
-                        <p class="no-local-models-hint">Klik Deteksi untuk scan Ollama/LM Studio.</p>
+                        <p class="no-local-models-hint">Klik Scan Models untuk import dari OmniRoute/Ollama.</p>
                       </div>
                     </div>
                   </div>

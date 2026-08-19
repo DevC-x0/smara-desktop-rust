@@ -216,6 +216,43 @@ pub async fn detect_local_llm_models() -> Result<Vec<DetectedLocalModel>, String
             }
         }
 
+        // 3. Probe OmniRoute / 9router at ports 20128, 20130, 20131, 20132
+        for port in [20128, 20130, 20131, 20132] {
+            let url = format!("http://127.0.0.1:{port}/v1/models");
+            let mut req = client.get(&url);
+            for key in &["CUSTOM_API_KEY", "SMARA_API_KEY", "NINE_ROUTER_API_KEY", "OPENAI_API_KEY"] {
+                if let Ok(val) = std::env::var(key) {
+                    if !val.trim().is_empty() {
+                        req = req.bearer_auth(val.trim());
+                        break;
+                    }
+                }
+            }
+            if let Ok(resp) = req.send() {
+                if resp.status().is_success() {
+                    if let Ok(json) = resp.json::<serde_json::Value>() {
+                        if let Some(models) = json.get("data").and_then(|m| m.as_array()) {
+                            let mut port_models = Vec::new();
+                            for m in models {
+                                if let Some(id) = m.get("id").and_then(|i| i.as_str()) {
+                                    port_models.push(DetectedLocalModel {
+                                        provider: "custom".to_string(),
+                                        model: id.to_string(),
+                                        endpoint: format!("http://127.0.0.1:{port}/v1"),
+                                        details: Some(format!("OmniRoute :{port}")),
+                                    });
+                                }
+                            }
+                            if !port_models.is_empty() {
+                                detected.extend(port_models);
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         Ok(detected)
     })
     .await

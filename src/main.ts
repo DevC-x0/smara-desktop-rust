@@ -526,6 +526,7 @@ const sidebarPanelTitleText = document.querySelector<HTMLElement>('#sidebar-pane
 const modelSwitcherDropdown = document.querySelector<HTMLElement>('#model-switcher-dropdown');
 const modelSwitcherBtn = document.querySelector<HTMLButtonElement>('#model-switcher-btn');
 const modelSwitcherMenu = document.querySelector<HTMLElement>('#model-switcher-menu');
+const modelSearchInput = document.querySelector<HTMLInputElement>('#model-search-input');
 const activeModelNameEl = document.querySelector<HTMLElement>('#active-model-name');
 const detectLocalModelsBtn = document.querySelector<HTMLButtonElement>('#detect-local-models-btn');
 const detectedLocalModelsList = document.querySelector<HTMLElement>('#detected-local-models-list');
@@ -700,9 +701,12 @@ function renderRuntime(runtime: DesktopRuntimeStatus) {
 }
 
 function renderProviderConfig(config: DesktopProviderConfig) {
+  currentProviderConfig = config;
   if (providerSelect) providerSelect.value = config.provider;
   if (providerModelInput) providerModelInput.value = config.model;
   if (providerEndpointInput) providerEndpointInput.value = config.endpoint;
+  if (activeModelNameEl) activeModelNameEl.textContent = config.model;
+  updateActiveModelSelection();
 }
 
 async function loadProviderConfig() {
@@ -1169,8 +1173,15 @@ function initQuickModelSwitcher() {
       modelSwitcherMenu.hidden = !modelSwitcherMenu.hidden;
       if (!modelSwitcherMenu.hidden) {
         updateActiveModelSelection();
+        if (!detectedLocalModels.length) {
+          void detectAndRenderLocalModels();
+        }
       }
     }
+  });
+
+  modelSearchInput?.addEventListener('input', () => {
+    renderDetectedModelsList(modelSearchInput.value);
   });
 
   document.addEventListener('click', (e) => {
@@ -1182,7 +1193,7 @@ function initQuickModelSwitcher() {
   document.querySelectorAll<HTMLButtonElement>('.model-option-btn').forEach((btn) => {
     btn.addEventListener('click', async () => {
       const provider = btn.dataset.provider || 'custom';
-      const model = btn.dataset.model || 'cx/gpt-5.5';
+      const model = btn.dataset.model || '9r/ag/gemini-3.7-flash-high';
       const endpoint = btn.dataset.endpoint;
       await switchActiveModel(provider, model, endpoint);
       if (modelSwitcherMenu) modelSwitcherMenu.hidden = true;
@@ -1209,48 +1220,63 @@ async function switchActiveModel(provider: string, model: string, endpoint?: str
     if (providerModelInput) providerModelInput.value = config.model;
     if (providerSelect) providerSelect.value = config.provider;
     if (providerEndpointInput) providerEndpointInput.value = config.endpoint;
+    updateActiveModelSelection();
     void refreshProviderHealth();
   } catch (error) {
     console.error('Failed to switch model:', error);
   }
 }
 
+function renderDetectedModelsList(filterQuery = '') {
+  if (!detectedLocalModelsList) return;
+  const q = filterQuery.toLowerCase().trim();
+  const filtered = q
+    ? detectedLocalModels.filter((m) => m.model.toLowerCase().includes(q) || (m.details && m.details.toLowerCase().includes(q)))
+    : detectedLocalModels;
+
+  if (!filtered.length) {
+    detectedLocalModelsList.innerHTML = `<p class="no-local-models-hint">${q ? 'Tidak ada model cocok dengan pencarian.' : 'Tidak ada service OmniRoute / Ollama aktif.'}</p>`;
+    return;
+  }
+
+  detectedLocalModelsList.innerHTML = '';
+  for (const m of filtered) {
+    const btn = document.createElement('button');
+    btn.className = 'model-option-btn';
+    btn.type = 'button';
+    btn.dataset.provider = m.provider;
+    btn.dataset.model = m.model;
+    if (m.endpoint) btn.dataset.endpoint = m.endpoint;
+    const icon = m.details?.includes('OmniRoute') ? '🌐' : (m.provider === 'ollama' ? '🦙' : '🤖');
+    btn.innerHTML = `
+      <span class="model-opt-icon">${icon}</span>
+      <span class="model-opt-name" title="${m.model}">${m.model}</span>
+      ${m.details ? `<span style="margin-left:auto;font-size:9px;color:#94A3B8;">${m.details}</span>` : ''}
+    `;
+    btn.addEventListener('click', async () => {
+      await switchActiveModel(m.provider, m.model, m.endpoint);
+      if (modelSwitcherMenu) modelSwitcherMenu.hidden = true;
+    });
+    detectedLocalModelsList.append(btn);
+  }
+  updateActiveModelSelection();
+}
+
 async function detectAndRenderLocalModels() {
   if (!detectedLocalModelsList || !detectLocalModelsBtn) return;
   detectLocalModelsBtn.disabled = true;
   detectLocalModelsBtn.textContent = 'Scanning...';
-  detectedLocalModelsList.innerHTML = '<p class="no-local-models-hint">Scanning Ollama (11434) & LM Studio (1234)...</p>';
+  detectedLocalModelsList.innerHTML = '<p class="no-local-models-hint">Scanning OmniRoute (20128/20130), Ollama (11434)...</p>';
 
   try {
     const models = await invokeCommand<DetectedLocalModel[]>('detect_local_llm_models');
     detectedLocalModels = models;
     detectLocalModelsBtn.disabled = false;
-    detectLocalModelsBtn.textContent = '🔄 Deteksi';
-
-    if (!models.length) {
-      detectedLocalModelsList.innerHTML = '<p class="no-local-models-hint">Tidak ada service Ollama / LM Studio aktif di localhost.</p>';
-      return;
-    }
-
-    detectedLocalModelsList.innerHTML = '';
-    for (const m of models) {
-      const btn = document.createElement('button');
-      btn.className = 'model-option-btn';
-      btn.type = 'button';
-      btn.innerHTML = `
-        <span class="model-opt-icon">${m.provider === 'ollama' ? '🦙' : '🤖'}</span>
-        <span class="model-opt-name">${m.model}</span>
-        ${m.details ? `<span style="margin-left:auto;font-size:9.5px;color:#64748B;">${m.details}</span>` : ''}
-      `;
-      btn.addEventListener('click', async () => {
-        await switchActiveModel(m.provider, m.model, m.endpoint);
-        if (modelSwitcherMenu) modelSwitcherMenu.hidden = true;
-      });
-      detectedLocalModelsList.append(btn);
-    }
+    detectLocalModelsBtn.textContent = '🔄 Scan Models';
+    renderDetectedModelsList(modelSearchInput?.value || '');
   } catch (error) {
     detectLocalModelsBtn.disabled = false;
-    detectLocalModelsBtn.textContent = '🔄 Deteksi';
+    detectLocalModelsBtn.textContent = '🔄 Scan Models';
     detectedLocalModelsList.innerHTML = `<p class="no-local-models-hint">Error: ${error instanceof Error ? error.message : String(error)}</p>`;
   }
 }

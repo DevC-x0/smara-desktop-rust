@@ -2881,16 +2881,41 @@ svg[aria-roledescription="error"],
   position: absolute;
   top: calc(100% + 6px);
   left: 0;
-  width: 250px;
+  width: 320px;
+  max-height: 480px;
   background: #0A0F0A;
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 8px;
   box-shadow: 0 12px 36px rgba(0, 0, 0, 0.6);
   z-index: 100;
-  padding: 6px;
+  padding: 8px;
   display: flex;
   flex-direction: column;
   gap: 6px;
+}
+
+.model-search-input {
+  width: 100%;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 5px;
+  color: #F8FAFC;
+  font-size: 11px;
+  padding: 6px 8px;
+  outline: none;
+  box-sizing: border-box;
+}
+
+.model-search-input:focus {
+  border-color: #BEF264;
+}
+
+.detected-models-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 260px;
+  overflow-y: auto;
 }
 
 .model-menu-section {
