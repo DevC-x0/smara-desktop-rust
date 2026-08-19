@@ -766,6 +766,27 @@ fn request_streaming_completion(
     let status = response.status();
     if !status.is_success() {
         let body = response.text().unwrap_or_default();
+        if !tools.is_empty() && (status.as_u16() == 400 || status.as_u16() == 422) {
+            let fallback_payload = json!({
+                "model": config.model,
+                "stream": true,
+                "messages": messages,
+            });
+            let mut retry_req = client.post(chat_url(config)).json(&fallback_payload);
+            if let Some(key) = provider_api_key(&config.provider) {
+                retry_req = retry_req.bearer_auth(key);
+            }
+            if let Ok(retry_resp) = retry_req.send() {
+                if retry_resp.status().is_success() {
+                    return stream_response_lines(
+                        retry_resp,
+                        on_reasoning,
+                        on_delta,
+                        should_cancel,
+                    );
+                }
+            }
+        }
         return Err(format!("Provider stream HTTP error {status}: {body}"));
     }
     stream_response_lines(
