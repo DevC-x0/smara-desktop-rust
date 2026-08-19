@@ -2336,6 +2336,11 @@ function renderChatMessages() {
   // Smart auto-scroll: Only auto-scroll to bottom if user has not scrolled up to inspect history/trajectory
   if (!userScrolledUp) {
     chatMessages.scrollTop = chatMessages.scrollHeight;
+    window.requestAnimationFrame(() => {
+      if (chatMessages && !userScrolledUp) {
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+      }
+    });
   }
 
   // Defer heavy mermaid diagrams rendering until stream is complete to avoid webview CPU lockup/crashes

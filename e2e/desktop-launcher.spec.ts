@@ -1210,4 +1210,14 @@ test('exports active chat session to markdown, html, and json formats', async ({
   await expect(exportModal).toBeHidden();
 });
 
+test('captures chat page screenshot for redesign verification', async ({ page }) => {
+  await installMockTauri(page);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto('/');
+  await openDesktopPage(page, 'chat');
+  await page.waitForTimeout(300);
+  await page.screenshot({ path: '/home/cahya/.gemini/antigravity/brain/9f9ccaa3-3e79-4763-8864-344f94eb7e24/chat_redesign_screenshot.png' });
+});
+
+
 

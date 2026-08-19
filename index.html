@@ -134,7 +134,10 @@
             <kbd class="shortcut-badge">Ctrl+K</kbd>
           </button>
           <div class="topbar-actions">
-            <button id="refresh-provider-button" class="btn btn-secondary btn-sm" type="button">Check Provider</button>
+            <button id="refresh-provider-button" class="btn btn-topbar-check" type="button" title="Periksa status koneksi LLM provider">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M23 4v6h-6"></path><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path></svg>
+              <span>Check Provider</span>
+            </button>
             <span class="online-pill"><span class="pulse-dot"></span> Local Engine</span>
           </div>
         </header>
@@ -240,17 +243,23 @@
           <section id="chat-section" class="feature-panel chat-panel" data-page="chat">
             <div class="chat-header-bar">
               <div class="chat-header-info">
-                <div id="active-workspace-badge" class="chat-workspace-badge" title="Folder Workspace Aktif">
-                  <span class="workspace-icon">📁</span>
+                <div id="active-workspace-badge" class="chat-workspace-badge" title="Folder Workspace Aktif (Shared Cache & Memory)">
+                  <svg class="workspace-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+                  </svg>
                   <span id="active-workspace-name" class="workspace-name">Default</span>
                   <span id="active-workspace-memory-pill" class="workspace-memory-pill">0 memori</span>
                   <span id="active-workspace-git-pill" class="workspace-git-pill" title="Git Status">🌿 main</span>
                 </div>
 
+                <span class="header-divider" aria-hidden="true"></span>
+
                 <!-- Quick Model Switcher Dropdown -->
                 <div id="model-switcher-dropdown" class="model-switcher-dropdown">
                   <button id="model-switcher-btn" class="model-switcher-btn" type="button" aria-expanded="false" title="Ganti Model / Provider AI">
-                    <span class="model-icon">⚡</span>
+                    <svg class="model-icon-svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#FACC15" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                      <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+                    </svg>
                     <span id="active-model-name" class="active-model-name">cx/gpt-5.5</span>
                     <svg class="dropdown-chevron" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
                       <polyline points="6 9 12 15 18 9"></polyline>
@@ -290,9 +299,14 @@
                   </div>
                 </div>
 
+                <span class="header-divider" aria-hidden="true"></span>
+
+                <!-- Session Dropdown Selector -->
                 <div id="session-dropdown" class="session-dropdown">
                   <button id="session-dropdown-trigger" class="session-dropdown-btn" type="button" aria-expanded="false" aria-haspopup="true">
-                    <span class="session-btn-icon">💬</span>
+                    <svg class="session-btn-icon-svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+                    </svg>
                     <span id="session-dropdown-active-title" class="session-btn-title">Sesi Baru</span>
                     <span id="session-dropdown-count-badge" class="session-badge-pill">0 pesan</span>
                     <svg class="session-btn-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
@@ -321,13 +335,41 @@
                   <option value="">Sesi baru</option>
                 </select>
               </div>
+
               <div class="chat-header-tools">
                 <span id="chat-token-gauge" class="chat-token-gauge" title="Estimasi Token Sesi">0 tok</span>
-                <button id="new-chat-button" class="btn btn-secondary btn-sm" type="button">Sesi Baru</button>
-                <button id="retry-chat-button" class="btn btn-secondary btn-sm" type="button" disabled>Retry</button>
-                <button id="cancel-chat-stream-button" class="btn btn-danger btn-sm" type="button" hidden>Batal</button>
-                <button id="chat-export-btn" class="btn btn-secondary btn-sm" type="button" title="Ekspor riwayat percakapan sesi ini">📥 Ekspor</button>
-                <button id="delete-chat-button" class="btn btn-danger btn-sm" type="button" disabled>Hapus</button>
+                <div class="header-action-group">
+                  <button id="new-chat-button" class="btn btn-chat-action btn-chat-primary" type="button" title="Mulai sesi chat baru">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                      <line x1="12" y1="5" x2="12" y2="19"></line>
+                      <line x1="5" y1="12" x2="19" y2="12"></line>
+                    </svg>
+                    <span>Sesi Baru</span>
+                  </button>
+                  <button id="chat-export-btn" class="btn btn-chat-action btn-chat-secondary" type="button" title="Ekspor riwayat percakapan sesi ini">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                      <polyline points="7 10 12 15 17 10"></polyline>
+                      <line x1="12" y1="15" x2="12" y2="3"></line>
+                    </svg>
+                    <span>Ekspor</span>
+                  </button>
+                  <button id="retry-chat-button" class="btn btn-chat-action btn-chat-secondary" type="button" disabled title="Kirim ulang respon terakhir">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M23 4v6h-6"></path>
+                      <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
+                    </svg>
+                    <span>Retry</span>
+                  </button>
+                  <button id="cancel-chat-stream-button" class="btn btn-danger btn-sm" type="button" hidden>Batal</button>
+                  <button id="delete-chat-button" class="btn btn-chat-action btn-chat-danger" type="button" disabled title="Hapus sesi ini">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <polyline points="3 6 5 6 21 6"></polyline>
+                      <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                    </svg>
+                    <span>Hapus</span>
+                  </button>
+                </div>
               </div>
             </div>
 
