@@ -1782,4 +1782,37 @@ Done!
         println!("MULTI-TURN TEST RESULT: {:?}", res);
         assert!(res.is_ok());
     }
+
+    #[test]
+    fn test_live_real_prompts_execution() {
+        let config = DesktopProviderConfig {
+            provider: "custom".to_string(),
+            model: "9r/ag/gemini-3.7-flash-high".to_string(),
+            endpoint: "http://127.0.0.1:20128/v1".to_string(),
+        };
+
+        // Test 1: npx skills add prompt
+        let prompt1 = "npx skills add https://github.com/Leonxlnx/taste-skill --skill \"design-taste-frontend\"";
+        assert!(is_direct_cli_command(prompt1));
+
+        // Test 2: cek vps prompt
+        let sys_prompt = "You are Smara, a local autonomous system developer assistant.";
+        let messages_vps = vec![
+            json!({ "role": "system", "content": sys_prompt }),
+            json!({ "role": "user", "content": "cek vps" }),
+        ];
+        let mut deltas_vps = Vec::new();
+        let res_vps = request_streaming_completion(
+            &config,
+            &messages_vps,
+            &[],
+            |_r| {},
+            |d| deltas_vps.push(d.to_string()),
+            || false,
+        );
+        println!("CEK VPS RESULT: {:?}", res_vps);
+        assert!(res_vps.is_ok());
+        let out = res_vps.unwrap();
+        assert!(!out.content.is_empty());
+    }
 }
