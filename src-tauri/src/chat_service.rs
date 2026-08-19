@@ -223,6 +223,48 @@ fn anthropic_url(config: &DesktopProviderConfig) -> String {
     }
 }
 
+fn is_direct_cli_command(query: &str) -> bool {
+    let q = query.trim();
+    let prefixes = [
+        "npx ", "npm ", "pnpm ", "yarn ", "bun ",
+        "cargo ", "rustc ",
+        "git ", "gh ",
+        "pip ", "python ", "python3 ", "uv ", "uvx ",
+        "docker ", "docker-compose ", "kubectl ",
+        "curl ", "wget ", "ssh ",
+        "ls ", "cat ", "mkdir ", "touch ", "rm ", "cp ", "mv ",
+    ];
+    prefixes.iter().any(|prefix| q.starts_with(prefix))
+}
+
+fn extract_text_tool_calls(text: &str) -> Vec<DesktopToolCall> {
+    let mut calls = Vec::new();
+    for block_type in &["action", "tool_call", "tool", "json"] {
+        let pattern = format!("```{block_type}");
+        let mut search_idx = 0;
+        while let Some(start_pos) = text[search_idx..].find(&pattern) {
+            let abs_start = search_idx + start_pos + pattern.len();
+            if let Some(end_pos) = text[abs_start..].find("```") {
+                let json_str = text[abs_start..abs_start + end_pos].trim();
+                if let Ok(val) = serde_json::from_str::<Value>(json_str) {
+                    if let Some(tool_name) = val.get("tool").or_else(|| val.get("name")).or_else(|| val.get("action")).and_then(Value::as_str) {
+                        let args = val.get("args").or_else(|| val.get("arguments")).or_else(|| val.get("parameters")).cloned().unwrap_or_else(|| json!({}));
+                        calls.push(DesktopToolCall {
+                            id: format!("call-{}", now_ms()),
+                            name: tool_name.to_string(),
+                            arguments: if args.is_string() { args.as_str().unwrap().to_string() } else { args.to_string() },
+                        });
+                    }
+                }
+                search_idx = abs_start + end_pos + 3;
+            } else {
+                break;
+            }
+        }
+    }
+    calls
+}
+
 fn workspace_scan_context(query: &str) -> Option<String> {
     let home = std::env::var("HOME").unwrap_or_else(|_| "/home/cahya".to_string());
     let mut candidate_paths = vec![
@@ -282,18 +324,27 @@ fn default_system_prompt(memories: &[DesktopMemory], messages: &[DesktopChatMess
     parts.push(
         "You are Smara, an advanced, autonomous AI developer assistant and local system agent running natively on the user's Linux computer.\n\
         You have direct capability to explore local workspaces, inspect code, analyze files, and assist with any engineering or system tasks.\n\
-        Never tell the user you lack access to their PC or filesystem—you are the user's local autonomous developer assistant. When asked about folders, projects, or files, analyze them directly and provide helpful, structured, and insightful answers.\n\n\
-        Tool & Specialized Capability Guidelines:\n\
-        - For installing or registering new Model Context Protocol (MCP) servers (such as playwright, github, sqlite, postgres, filesystem) when requested by the user, call `install_mcp_server` directly with server name, command (e.g. 'npx', 'uvx'), and args (e.g. ['-y', '@modelcontextprotocol/server-playwright']).\n\
-        - For viewing configured MCP servers, call `list_installed_mcp_servers`.\n\
-        - For installing or creating reusable automation skills (such as impeccable, test_runner, docker_audit) when requested by the user, call `install_skill` directly with name, description, tags, and execution steps.\n\
-        - For viewing configured skills, call `list_installed_skills`.\n\
-        - For analyzing files, lines of code (LOC), language breakdown, and statistics, ALWAYS prefer calling `get_code_stats` directly—it returns instant 0ms native calculations and pre-formatted pie chart data!\n\
-        - For looking up documentation, error fixes, or online guides, use `search_web`.\n\
-        - For investigating code symbols, functions, classes, dependencies, and file relationships, use `query_code_graph`.\n\
-        - For monitoring background servers or processes started via `create_terminal`, use `get_process_logs` to check live output.\n\
-        - When running custom commands with `run_command`, write clean, syntactically valid scripts directly.\n\n\
-        Visual Diagrams & Charts Engine:\n\
+        Never tell the user you lack access to their PC or filesystem—you are the user's local autonomous developer assistant. When asked about folders, projects, or files, analyze them directly and provide helpful, structured, and insightful answers.\n\n        Tool & Specialized Capability Guidelines:
+        - AUTONOMOUS EXECUTION: When the user asks to run a command, inspect files, check a server/VPS, or install an MCP/skill, ALWAYS execute the action directly rather than telling the user to run it themselves.
+        - To execute tools, output an action block in your response:
+        ```action
+        {\"tool\": \"run_command\", \"args\": {\"command\": \"npx skills add https://github.com/Leonxlnx/taste-skill --skill \\\"design-taste-frontend\\\"\"}}
+        ```
+        Available tools:
+        - `run_command`: {\"command\": \"...\"} - Run a shell command in workspace (npx, git, cargo, npm, etc.)
+        - `install_skill`: {\"name\": \"...\", \"description\": \"...\", \"tags\": [...], \"steps\": [...]} - Register or install a reusable skill
+        - `install_mcp_server`: {\"name\": \"...\", \"command\": \"...\", \"args\": [...]} - Configure an MCP server
+        - `list_dir`: {\"path\": \".\"} - List directory contents
+        - `read_file`: {\"path\": \"...\"} - Read file contents
+        - `write_file`: {\"path\": \"...\", \"content\": \"...\"} - Write file contents
+        - `get_code_stats`: {\"path\": \".\"} - Project language/LOC breakdown
+        - `search_web`: {\"query\": \"...\"} - Search documentation/web
+        - For analyzing files, lines of code (LOC), language breakdown, and statistics, ALWAYS prefer calling `get_code_stats` directly—it returns instant 0ms native calculations and pre-formatted pie chart data!
+        - For looking up documentation, error fixes, or online guides, use `search_web`.
+        - For investigating code symbols, functions, classes, dependencies, and file relationships, use `query_code_graph`.
+        - For monitoring background servers or processes started via `create_terminal`, use `get_process_logs` to check live output.
+
+        Visual Diagrams & Charts Engine:
         Smara Desktop interface has a built-in Mermaid diagram and chart renderer. Whenever asked for a chart, graph, diagram, architecture flow, statistics breakdown (pie chart), git branch graph, or workflow timeline, output standard ```mermaid code blocks (e.g. `pie`, `graph TD`, `flowchart LR`, `sequenceDiagram`, `gantt`, `gitGraph`, `mindmap`). They will automatically render as rich visual SVGs and interactive charts."
             .to_string(),
     );
@@ -1184,9 +1235,26 @@ pub async fn stream_desktop_chat(
                     final_content.push_str(&stream_out.content);
                 }
 
-                if !stream_out.tool_calls.is_empty() {
+                let mut tool_calls = stream_out.tool_calls;
+                if tool_calls.is_empty() {
+                    let text_calls = extract_text_tool_calls(&stream_out.content);
+                    if !text_calls.is_empty() {
+                        tool_calls = text_calls;
+                    } else if _turn == 0 {
+                        let last_query = initial_messages.last().map(|m| m.content.as_str()).unwrap_or_default().trim();
+                        if is_direct_cli_command(last_query) {
+                            tool_calls.push(DesktopToolCall {
+                                id: format!("call-{}", now_ms()),
+                                name: "run_command".to_string(),
+                                arguments: json!({ "command": last_query }).to_string(),
+                            });
+                        }
+                    }
+                }
+
+                if !tool_calls.is_empty() {
                     let mut assistant_tool_calls_json = Vec::new();
-                    for tc in &stream_out.tool_calls {
+                    for tc in &tool_calls {
                         assistant_tool_calls_json.push(json!({
                             "id": tc.id,
                             "type": "function",
@@ -1202,7 +1270,7 @@ pub async fn stream_desktop_chat(
                         "tool_calls": assistant_tool_calls_json,
                     }));
 
-                    for tc in stream_out.tool_calls {
+                    for tc in tool_calls {
                         let tool_start_msg = format!("🛠️ Eksekusi Tool: `{}` ({})", tc.name, tc.arguments);
                         if let Ok(mut procs) = rec_for_blocking.lock() {
                             procs.push(ChatProcessEntry {
@@ -1250,10 +1318,11 @@ pub async fn stream_desktop_chat(
                                 (res.output, "tool_done", msg)
                             }
                             Err(err) => {
-                                let msg = format!("✕ Gagal `{}`: {}", tc.name, err);
-                                (format!("Error executing tool {}: {}", tc.name, err), "error", msg)
+                                let msg = format!("⚠️ Gagal `{}`: {}", tc.name, err);
+                                (format!("Tool execution error: {err}"), "tool_error", msg)
                             }
                         };
+
                         if let Ok(mut procs) = rec_for_blocking.lock() {
                             procs.push(ChatProcessEntry {
                                 kind: log_kind.to_string(),
@@ -1275,6 +1344,7 @@ pub async fn stream_desktop_chat(
                             "content": output_text,
                         }));
                     }
+                    continue;
                 } else {
                     emit_chat_stream_event(
                         &event_app_for_done,
@@ -1388,9 +1458,10 @@ pub fn cancel_desktop_chat_stream(
 #[cfg(test)]
 mod tests {
     use super::{
-        anthropic_message, openai_message, request_completion, request_streaming_completion,
-        send_chat_at, validate_attachments, DesktopChatAttachment, DesktopChatMessage,
-        DesktopMemory, DesktopProviderConfig, SendChatRequest,
+        anthropic_message, extract_text_tool_calls, is_direct_cli_command, openai_message,
+        request_completion, request_streaming_completion, send_chat_at, validate_attachments,
+        DesktopChatAttachment, DesktopChatMessage, DesktopMemory, DesktopProviderConfig,
+        SendChatRequest,
     };
     use crate::app_state::now_ms;
     use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
@@ -1629,5 +1700,25 @@ mod tests {
         if let Ok(ref out) = res {
             println!("CONTENT: {}", out.content);
         }
+    }
+
+    #[test]
+    fn test_extract_text_tool_calls_and_cli_detection() {
+        assert!(is_direct_cli_command("npx skills add https://github.com/Leonxlnx/taste-skill --skill \"design-taste-frontend\""));
+        assert!(is_direct_cli_command("cargo test"));
+        assert!(is_direct_cli_command("git status"));
+        assert!(!is_direct_cli_command("halo, tolong buatkan website landing page"));
+
+        let text_with_action = r#"
+Here is what I will do:
+```action
+{"tool": "run_command", "args": {"command": "npx skills add foo"}}
+```
+Done!
+"#;
+        let calls = extract_text_tool_calls(text_with_action);
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0].name, "run_command");
+        assert!(calls[0].arguments.contains("npx skills add foo"));
     }
 }
