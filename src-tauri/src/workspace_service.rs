@@ -44,6 +44,25 @@ pub struct WorkspaceGitStatus {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct WorkspaceGitDiffFile {
+    pub path: String,
+    pub status: String,
+    pub additions: usize,
+    pub deletions: usize,
+    pub diff: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct WorkspaceGitDiffResult {
+    pub is_git: bool,
+    pub branch: String,
+    pub total_files: usize,
+    pub total_additions: usize,
+    pub total_deletions: usize,
+    pub files: Vec<WorkspaceGitDiffFile>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct WorkspaceFileContent {
     pub path: String,
     pub content: String,
@@ -429,6 +448,154 @@ pub async fn get_workspace_git_status(
     .map_err(|e| format!("Task execution failed: {e}"))?
 }
 
+pub fn get_git_diff_for_dir(dir: &Path) -> WorkspaceGitDiffResult {
+    let output = std::process::Command::new("git")
+        .arg("status")
+        .arg("--porcelain=v1")
+        .arg("-uall")
+        .arg("-b")
+        .current_dir(dir)
+        .output();
+
+    let output = match output {
+        Ok(out) if out.status.success() => String::from_utf8_lossy(&out.stdout).to_string(),
+        _ => {
+            return WorkspaceGitDiffResult {
+                is_git: false,
+                branch: String::new(),
+                total_files: 0,
+                total_additions: 0,
+                total_deletions: 0,
+                files: Vec::new(),
+            };
+        }
+    };
+
+    let mut branch = "main".to_string();
+    let mut files_to_diff: Vec<(String, String)> = Vec::new();
+
+    for line in output.lines() {
+        if line.starts_with("##") {
+            let branch_part = line.trim_start_matches('#').trim();
+            if let Some(idx) = branch_part.find("...") {
+                branch = branch_part[..idx].to_string();
+            } else {
+                branch = branch_part.to_string();
+            }
+        } else if line.len() >= 4 {
+            let status_code = &line[..2];
+            let rel_path = line[3..].trim().trim_matches('"').to_string();
+            let status = if status_code == "??" {
+                "untracked".to_string()
+            } else if status_code.contains('A') {
+                "added".to_string()
+            } else if status_code.contains('D') {
+                "deleted".to_string()
+            } else {
+                "modified".to_string()
+            };
+            files_to_diff.push((rel_path, status));
+        }
+    }
+
+    let mut diff_files = Vec::new();
+    let mut total_additions = 0;
+    let mut total_deletions = 0;
+
+    for (rel_path, status) in files_to_diff {
+        let mut adds = 0;
+        let mut dels = 0;
+        let diff_text = if status == "untracked" {
+            let file_full = dir.join(&rel_path);
+            if let Ok(content) = fs::read_to_string(&file_full) {
+                let lines_count = content.lines().count();
+                adds = lines_count;
+                let mut diff_buf = format!("--- /dev/null\n+++ b/{rel_path}\n@@ -0,0 +1,{} @@\n", lines_count.max(1));
+                for line in content.lines().take(500) {
+                    diff_buf.push('+');
+                    diff_buf.push_str(line);
+                    diff_buf.push('\n');
+                }
+                if lines_count > 500 {
+                    diff_buf.push_str("... [Diff truncated to 500 lines]");
+                }
+                diff_buf
+            } else {
+                format!("--- /dev/null\n+++ b/{rel_path}\n@@ -0,0 +1 @@\n+ [Binary or Unreadable File]")
+            }
+        } else {
+            let diff_out = std::process::Command::new("git")
+                .args(["diff", "HEAD", "--", &rel_path])
+                .current_dir(dir)
+                .output();
+
+            let raw_diff = match diff_out {
+                Ok(out) if out.status.success() && !out.stdout.is_empty() => {
+                    String::from_utf8_lossy(&out.stdout).to_string()
+                }
+                _ => {
+                    let fallback_out = std::process::Command::new("git")
+                        .args(["diff", "--", &rel_path])
+                        .current_dir(dir)
+                        .output();
+                    match fallback_out {
+                        Ok(fout) => String::from_utf8_lossy(&fout.stdout).to_string(),
+                        _ => String::new(),
+                    }
+                }
+            };
+
+            for line in raw_diff.lines() {
+                if line.starts_with('+') && !line.starts_with("+++") {
+                    adds += 1;
+                } else if line.starts_with('-') && !line.starts_with("---") {
+                    dels += 1;
+                }
+            }
+            if raw_diff.trim().is_empty() {
+                format!("// No visible diff lines for {rel_path} ({status})")
+            } else {
+                raw_diff
+            }
+        };
+
+        total_additions += adds;
+        total_deletions += dels;
+
+        diff_files.push(WorkspaceGitDiffFile {
+            path: rel_path,
+            status,
+            additions: adds,
+            deletions: dels,
+            diff: diff_text,
+        });
+    }
+
+    let total_files = diff_files.len();
+
+    WorkspaceGitDiffResult {
+        is_git: true,
+        branch,
+        total_files,
+        total_additions,
+        total_deletions,
+        files: diff_files,
+    }
+}
+
+#[tauri::command]
+pub async fn get_workspace_git_diff(
+    app: AppHandle,
+    workspace: Option<String>,
+) -> Result<WorkspaceGitDiffResult, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let root = resolve_workspace_root(&app, workspace.as_deref());
+        Ok(get_git_diff_for_dir(&root))
+    })
+    .await
+    .map_err(|e| format!("Task execution failed: {e}"))?
+}
+
 #[tauri::command]
 pub async fn read_workspace_file(
     app: AppHandle,
@@ -574,6 +741,18 @@ mod tests {
 
         let status = get_git_status_for_dir(&temp_dir);
         assert!(!status.is_git);
+        let _ = fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn git_diff_check_handles_non_git() {
+        let temp_dir = std::env::temp_dir().join("smara_test_diff_nongit");
+        let _ = fs::remove_dir_all(&temp_dir);
+        fs::create_dir_all(&temp_dir).unwrap();
+
+        let diff = get_git_diff_for_dir(&temp_dir);
+        assert!(!diff.is_git);
+        assert_eq!(diff.files.len(), 0);
         let _ = fs::remove_dir_all(&temp_dir);
     }
 }

@@ -135,6 +135,23 @@ type WorkspaceGitStatus = {
   summary: string;
 };
 
+type WorkspaceGitDiffFile = {
+  path: string;
+  status: string;
+  additions: number;
+  deletions: number;
+  diff: string;
+};
+
+type WorkspaceGitDiffResult = {
+  is_git: boolean;
+  branch: string;
+  total_files: number;
+  total_additions: number;
+  total_deletions: number;
+  files: WorkspaceGitDiffFile[];
+};
+
 type WorkspaceFileContent = {
   path: string;
   content: string;
@@ -561,6 +578,23 @@ const exportPreviewLabel = document.querySelector<HTMLElement>('#export-preview-
 const exportFileNamePreview = document.querySelector<HTMLElement>('#export-file-name-preview');
 const exportPreviewTextarea = document.querySelector<HTMLTextAreaElement>('#export-preview-textarea');
 const exportOptionCards = document.querySelectorAll<HTMLElement>('.export-option-card');
+const openGitDiffReviewButton = document.querySelector<HTMLButtonElement>('#open-git-diff-review-button');
+const reviewChangesBadge = document.querySelector<HTMLElement>('#review-changes-badge');
+const gitDiffReviewModal = document.querySelector<HTMLElement>('#git-diff-review-modal');
+const closeGitDiffReviewModalButton = document.querySelector<HTMLButtonElement>('#close-git-diff-review-modal-button');
+const closeGitReviewButton = document.querySelector<HTMLButtonElement>('#close-git-review-button');
+const refreshGitReviewButton = document.querySelector<HTMLButtonElement>('#refresh-git-review-button');
+const gitReviewBranchBadge = document.querySelector<HTMLElement>('#git-review-branch-badge');
+const gitReviewSummaryBadge = document.querySelector<HTMLElement>('#git-review-summary-badge');
+const gitReviewFilesCount = document.querySelector<HTMLElement>('#git-review-files-count');
+const gitReviewFilesList = document.querySelector<HTMLElement>('#git-review-files-list');
+const gitDiffActiveFilename = document.querySelector<HTMLElement>('#git-diff-active-filename');
+const gitDiffActiveStats = document.querySelector<HTMLElement>('#git-diff-active-stats');
+const gitDiffViewerContent = document.querySelector<HTMLElement>('#git-diff-viewer-content');
+const copyGitDiffButton = document.querySelector<HTMLButtonElement>('#copy-git-diff-button');
+
+let activeGitDiffResult: WorkspaceGitDiffResult | null = null;
+let activeGitDiffFilePath: string | null = null;
 
 let activePaletteFilter: 'all' | 'actions' | 'sessions' | 'files' | 'memories' = 'all';
 let paletteSelectedIndex = 0;
@@ -980,6 +1014,11 @@ async function loadWorkspaceGitStatus() {
       activeWorkspaceGitPill.textContent = `🌿 ${status.branch || 'main'}`;
       activeWorkspaceGitPill.title = status.summary;
     }
+    const totalChanges = status.staged_count + status.modified_count + status.untracked_count;
+    if (reviewChangesBadge) {
+      reviewChangesBadge.hidden = totalChanges === 0;
+      reviewChangesBadge.textContent = String(totalChanges);
+    }
   } catch (error) {
     console.error('Failed to load git status:', error);
   }
@@ -1163,6 +1202,171 @@ function initFilePreviewModal() {
     } catch (error) {
       alert(error instanceof Error ? error.message : String(error));
     }
+  });
+}
+
+async function openGitDiffReviewModal(targetFilePath?: string) {
+  if (!gitDiffReviewModal) return;
+  gitDiffReviewModal.hidden = false;
+  if (gitReviewSummaryBadge) gitReviewSummaryBadge.textContent = 'Memuat Git Diff...';
+  if (gitDiffViewerContent) {
+    gitDiffViewerContent.innerHTML = '<p class="git-diff-placeholder">🔄 Memuat perubahan file...</p>';
+  }
+
+  try {
+    const res = await invokeCommand<WorkspaceGitDiffResult>('get_workspace_git_diff', {
+      workspace: activeWorkspaceName === 'default' ? null : activeWorkspaceName,
+    });
+    activeGitDiffResult = res;
+    if (gitReviewBranchBadge) {
+      gitReviewBranchBadge.textContent = `🌿 ${res.branch || 'main'}`;
+    }
+    if (gitReviewSummaryBadge) {
+      gitReviewSummaryBadge.textContent = res.is_git
+        ? `${res.total_files} file (${res.total_additions > 0 ? `+${res.total_additions}` : ''} ${res.total_deletions > 0 ? `-${res.total_deletions}` : ''})`
+        : 'Bukan repositori Git';
+    }
+    if (gitReviewFilesCount) {
+      gitReviewFilesCount.textContent = String(res.total_files);
+    }
+
+    renderGitReviewFileList(targetFilePath);
+  } catch (error) {
+    if (gitDiffViewerContent) {
+      gitDiffViewerContent.innerHTML = `<p class="git-diff-placeholder">⚠️ Gagal memuat git diff: ${error instanceof Error ? error.message : String(error)}</p>`;
+    }
+  }
+}
+
+function renderGitReviewFileList(preferredPath?: string) {
+  if (!gitReviewFilesList || !activeGitDiffResult) return;
+  const files = activeGitDiffResult.files;
+
+  if (files.length === 0) {
+    gitReviewFilesList.innerHTML = '<p class="sidebar-chat-empty">✅ Tidak ada perubahan file (Working tree clean).</p>';
+    if (gitDiffActiveFilename) gitDiffActiveFilename.textContent = 'Working tree clean';
+    if (gitDiffActiveStats) gitDiffActiveStats.innerHTML = '';
+    if (gitDiffViewerContent) {
+      gitDiffViewerContent.innerHTML = '<p class="git-diff-placeholder">✨ Tidak ada perubahan file yang perlu direview.</p>';
+    }
+    return;
+  }
+
+  const selectedFile = (preferredPath && files.find((f) => f.path === preferredPath)) || files[0];
+  activeGitDiffFilePath = selectedFile ? selectedFile.path : null;
+
+  gitReviewFilesList.replaceChildren(
+    ...files.map((file) => {
+      const item = document.createElement('div');
+      const isActive = activeGitDiffFilePath === file.path;
+      item.className = `git-review-file-item${isActive ? ' active' : ''}`;
+      item.setAttribute('data-path', file.path);
+
+      const left = document.createElement('div');
+      left.className = 'file-item-left';
+
+      const badge = document.createElement('span');
+      badge.className = `file-status-badge status-${file.status}`;
+      badge.textContent = file.status === 'untracked' ? 'UNT' : file.status.slice(0, 3);
+
+      const pathSpan = document.createElement('span');
+      pathSpan.className = 'file-item-path';
+      pathSpan.textContent = file.path;
+      pathSpan.title = file.path;
+
+      left.append(badge, pathSpan);
+
+      const stats = document.createElement('div');
+      stats.className = 'file-item-stats';
+      if (file.additions > 0) {
+        const add = document.createElement('span');
+        add.className = 'stat-add';
+        add.textContent = `+${file.additions}`;
+        stats.append(add);
+      }
+      if (file.deletions > 0) {
+        const del = document.createElement('span');
+        del.className = 'stat-del';
+        del.textContent = `-${file.deletions}`;
+        stats.append(del);
+      }
+
+      item.append(left, stats);
+
+      item.addEventListener('click', () => {
+        activeGitDiffFilePath = file.path;
+        document.querySelectorAll('.git-review-file-item').forEach((el) => el.classList.remove('active'));
+        item.classList.add('active');
+        renderGitDiffContent(file);
+      });
+
+      return item;
+    }),
+  );
+
+  if (selectedFile) {
+    renderGitDiffContent(selectedFile);
+  }
+}
+
+function renderGitDiffContent(file: WorkspaceGitDiffFile) {
+  if (!gitDiffViewerContent || !gitDiffActiveFilename || !gitDiffActiveStats) return;
+
+  gitDiffActiveFilename.textContent = file.path;
+  gitDiffActiveStats.innerHTML = `
+    <span class="file-status-badge status-${file.status}">${file.status.toUpperCase()}</span>
+    ${file.additions > 0 ? `<span class="stat-add">+${file.additions}</span>` : ''}
+    ${file.deletions > 0 ? `<span class="stat-del">-${file.deletions}</span>` : ''}
+  `;
+
+  gitDiffViewerContent.replaceChildren();
+
+  const lines = file.diff.split('\n');
+  lines.forEach((line) => {
+    const lineEl = document.createElement('div');
+    if (line.startsWith('+++') || line.startsWith('---')) {
+      lineEl.className = 'git-diff-line diff-line-file';
+    } else if (line.startsWith('@@')) {
+      lineEl.className = 'git-diff-line diff-line-chunk';
+    } else if (line.startsWith('+')) {
+      lineEl.className = 'git-diff-line diff-line-add';
+    } else if (line.startsWith('-')) {
+      lineEl.className = 'git-diff-line diff-line-del';
+    } else {
+      lineEl.className = 'git-diff-line diff-line-context';
+    }
+    lineEl.textContent = line;
+    gitDiffViewerContent.append(lineEl);
+  });
+}
+
+function initGitDiffReviewModal() {
+  openGitDiffReviewButton?.addEventListener('click', () => void openGitDiffReviewModal());
+  sidebarGitStatusBar?.addEventListener('click', () => void openGitDiffReviewModal());
+  activeWorkspaceGitPill?.addEventListener('click', () => void openGitDiffReviewModal());
+
+  closeGitDiffReviewModalButton?.addEventListener('click', () => {
+    if (gitDiffReviewModal) gitDiffReviewModal.hidden = true;
+  });
+  closeGitReviewButton?.addEventListener('click', () => {
+    if (gitDiffReviewModal) gitDiffReviewModal.hidden = true;
+  });
+  refreshGitReviewButton?.addEventListener('click', () => {
+    void openGitDiffReviewModal(activeGitDiffFilePath || undefined);
+  });
+
+  copyGitDiffButton?.addEventListener('click', () => {
+    if (!activeGitDiffResult || !activeGitDiffFilePath) return;
+    const current = activeGitDiffResult.files.find((f) => f.path === activeGitDiffFilePath);
+    if (!current) return;
+    navigator.clipboard.writeText(current.diff).then(() => {
+      if (copyGitDiffButton) {
+        copyGitDiffButton.textContent = '✓ Tersalin!';
+        setTimeout(() => {
+          if (copyGitDiffButton) copyGitDiffButton.textContent = '📋 Salin Diff';
+        }, 2000);
+      }
+    });
   });
 }
 
@@ -4511,6 +4715,7 @@ async function startDesktop() {
     await loadProviderConfig();
     initSidebarViewTabs();
     initFilePreviewModal();
+    initGitDiffReviewModal();
     initQuickModelSwitcher();
     initAtMentionAutocomplete();
     initCommandPalette();

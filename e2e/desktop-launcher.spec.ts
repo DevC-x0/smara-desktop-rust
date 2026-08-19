@@ -471,6 +471,31 @@ async function installMockTauri(
             summary: '🌿 main (+1 staged, ~2 modified)',
           };
         }
+        if (command === 'get_workspace_git_diff') {
+          return {
+            is_git: true,
+            branch: 'main',
+            total_files: 2,
+            total_additions: 5,
+            total_deletions: 2,
+            files: [
+              {
+                path: 'src/main.ts',
+                status: 'modified',
+                additions: 4,
+                deletions: 1,
+                diff: '--- a/src/main.ts\n+++ b/src/main.ts\n@@ -1,3 +1,6 @@\n+// Smara Desktop\n-console.log("old");\n+console.log("new");\n+console.log("ready");\n',
+              },
+              {
+                path: 'src/new_feature.ts',
+                status: 'added',
+                additions: 1,
+                deletions: 1,
+                diff: '--- /dev/null\n+++ b/src/new_feature.ts\n@@ -0,0 +1 @@\n+export const ready = true;\n',
+              },
+            ],
+          };
+        }
         if (command === 'read_workspace_file') {
           return {
             path: args.path,
@@ -1217,6 +1242,44 @@ test('captures chat page screenshot for redesign verification', async ({ page })
   await openDesktopPage(page, 'chat');
   await page.waitForTimeout(300);
   await page.screenshot({ path: '/home/cahya/.gemini/antigravity/brain/9f9ccaa3-3e79-4763-8864-344f94eb7e24/chat_redesign_screenshot.png' });
+});
+
+test('opens and reviews file changes in git diff review modal', async ({ page }) => {
+  await installMockTauri(page);
+  await page.goto('/');
+  await openDesktopPage(page, 'chat');
+
+  // Verify review changes button exists
+  const reviewBtn = page.locator('#open-git-diff-review-button');
+  await expect(reviewBtn).toBeVisible();
+
+  // Click Review Changes button
+  await reviewBtn.click();
+
+  const reviewModal = page.locator('#git-diff-review-modal');
+  await expect(reviewModal).toBeVisible();
+
+  // Check branch badge and files list
+  await expect(page.locator('#git-review-branch-badge')).toContainText('🌿 main');
+  await expect(page.locator('#git-review-files-list .git-review-file-item')).toHaveCount(2);
+
+  // First file (src/main.ts) should be active by default
+  await expect(page.locator('#git-diff-active-filename')).toContainText('src/main.ts');
+  await expect(page.locator('#git-diff-viewer-content')).toContainText('// Smara Desktop');
+  await expect(page.locator('#git-diff-viewer-content .diff-line-add')).toHaveCount(3);
+
+  // Click second file (src/new_feature.ts)
+  await page.locator('.git-review-file-item[data-path="src/new_feature.ts"]').click();
+  await expect(page.locator('#git-diff-active-filename')).toContainText('src/new_feature.ts');
+  await expect(page.locator('#git-diff-viewer-content')).toContainText('export const ready = true;');
+
+  // Click Copy Diff button
+  await page.locator('#copy-git-diff-button').click();
+  await expect(page.locator('#copy-git-diff-button')).toContainText('Tersalin');
+
+  // Close modal
+  await page.locator('#close-git-diff-review-modal-button').click();
+  await expect(reviewModal).toBeHidden();
 });
 
 

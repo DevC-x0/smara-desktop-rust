@@ -347,6 +347,16 @@
                     </svg>
                     <span>Sesi Baru</span>
                   </button>
+                  <button id="open-git-diff-review-button" class="btn btn-chat-action btn-chat-secondary" type="button" title="Review Perubahan File (Git Diff)">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                      <polyline points="14 2 14 8 20 8"></polyline>
+                      <line x1="12" y1="18" x2="12" y2="12"></line>
+                      <line x1="9" y1="15" x2="15" y2="15"></line>
+                    </svg>
+                    <span>Changes</span>
+                    <span id="review-changes-badge" class="review-changes-badge" hidden>0</span>
+                  </button>
                   <button id="chat-export-btn" class="btn btn-chat-action btn-chat-secondary" type="button" title="Ekspor riwayat percakapan sesi ini">
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                       <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
@@ -904,6 +914,61 @@
           <button id="cancel-chat-export-button" class="btn btn-secondary" type="button">Batal</button>
           <button id="copy-chat-export-button" class="btn btn-secondary" type="button">📋 Salin Isi</button>
           <button id="download-chat-export-button" class="btn btn-primary" type="button">💾 Download File</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Git Diff & Changes Review Modal -->
+    <div id="git-diff-review-modal" class="app-modal" hidden>
+      <div class="app-modal-backdrop"></div>
+      <div class="app-modal-dialog modal-dialog-lg git-review-dialog">
+        <div class="app-modal-header">
+          <div class="modal-title-with-meta">
+            <h3>🔍 Review File Changes</h3>
+            <span id="git-review-branch-badge" class="git-branch-badge">🌿 main</span>
+            <span id="git-review-summary-badge" class="git-summary-badge">0 files</span>
+          </div>
+          <div class="modal-header-actions">
+            <button id="refresh-git-review-button" class="btn-icon" type="button" title="Refresh Git Diff">🔄</button>
+            <button id="close-git-diff-review-modal-button" class="btn-icon" type="button" title="Tutup Modal">✕</button>
+          </div>
+        </div>
+        <div class="app-modal-body git-review-body">
+          <div class="git-review-layout">
+            <!-- Left sidebar: File list -->
+            <div class="git-review-files-sidebar">
+              <div class="git-review-files-header">
+                <span class="files-title">Files Changed</span>
+                <span id="git-review-files-count" class="files-count-badge">0</span>
+              </div>
+              <div id="git-review-files-list" class="git-review-files-list">
+                <!-- Dynamically filled -->
+              </div>
+            </div>
+            <!-- Right pane: Diff Viewer -->
+            <div class="git-review-diff-pane">
+              <div class="git-diff-pane-header">
+                <div class="diff-file-info">
+                  <span id="git-diff-active-filename" class="diff-active-filename">Pilih file untuk melihat perubahan</span>
+                  <span id="git-diff-active-stats" class="diff-active-stats"></span>
+                </div>
+                <div class="diff-pane-actions">
+                  <button id="copy-git-diff-button" class="btn btn-secondary btn-xs" type="button">📋 Salin Diff</button>
+                </div>
+              </div>
+              <div id="git-diff-viewer-content" class="git-diff-viewer-content">
+                <p class="git-diff-placeholder">Pilih salah satu file di sebelah kiri untuk mereview perubahan kode (Diff).</p>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="app-modal-footer git-review-footer">
+          <div class="git-review-legend">
+            <span class="legend-item"><span class="legend-color legend-added"></span> +Ditambahkan</span>
+            <span class="legend-item"><span class="legend-color legend-deleted"></span> -Dihapus</span>
+            <span class="legend-item"><span class="legend-color legend-modified"></span> ~Dimodifikasi</span>
+          </div>
+          <button id="close-git-review-button" class="btn btn-secondary" type="button">Tutup</button>
         </div>
       </div>
     </div>

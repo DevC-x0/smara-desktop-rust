@@ -53,8 +53,8 @@ use workflow_service::{
 };
 use workspace_service::{
     apply_code_to_file, create_desktop_workspace, delete_desktop_workspace,
-    get_desktop_workspaces, get_workspace_file_tree, get_workspace_git_status,
-    read_workspace_file, switch_desktop_workspace,
+    get_desktop_workspaces, get_workspace_file_tree, get_workspace_git_diff,
+    get_workspace_git_status, read_workspace_file, switch_desktop_workspace,
 };
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -111,6 +111,7 @@ pub fn run() {
             delete_desktop_workspace,
             get_workspace_file_tree,
             get_workspace_git_status,
+            get_workspace_git_diff,
             read_workspace_file,
             apply_code_to_file,
             get_desktop_provider_config,

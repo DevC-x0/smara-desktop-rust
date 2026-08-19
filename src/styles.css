@@ -3537,3 +3537,324 @@ svg[aria-roledescription="error"],
   color: #E2E8F0;
 }
 
+/* ==========================================================================
+   Review Changes (Git Diff Viewer) Modal & Button
+   ========================================================================== */
+.sidebar-git-bar {
+  cursor: pointer;
+  transition: all 120ms ease;
+}
+
+.sidebar-git-bar:hover {
+  background: rgba(56, 189, 248, 0.12);
+  border-color: rgba(56, 189, 248, 0.35);
+  box-shadow: 0 0 10px rgba(56, 189, 248, 0.1);
+}
+
+.workspace-git-pill {
+  cursor: pointer;
+  transition: all 120ms ease;
+}
+
+.workspace-git-pill:hover {
+  background: rgba(56, 189, 248, 0.2);
+  border-color: rgba(56, 189, 248, 0.45);
+}
+
+.review-changes-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.review-changes-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1px 5px;
+  font-size: 9.5px;
+  font-weight: 700;
+  border-radius: 10px;
+  background: rgba(56, 189, 248, 0.25);
+  color: #38BDF8;
+}
+
+.modal-dialog-lg.git-review-dialog {
+  max-width: 960px;
+  width: 90vw;
+  height: 82vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.git-branch-badge {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: #38BDF8;
+  background: rgba(56, 189, 248, 0.1);
+  padding: 2px 7px;
+  border-radius: 4px;
+  border: 1px solid rgba(56, 189, 248, 0.2);
+}
+
+.git-summary-badge {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.git-review-body {
+  flex: 1;
+  overflow: hidden;
+  padding: 0 !important;
+  display: flex;
+}
+
+.git-review-layout {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+.git-review-files-sidebar {
+  width: 280px;
+  min-width: 240px;
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(0, 0, 0, 0.2);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.git-review-files-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.files-count-badge {
+  background: rgba(255, 255, 255, 0.08);
+  color: #E2E8F0;
+  padding: 1px 6px;
+  border-radius: 10px;
+  font-size: 10px;
+}
+
+.git-review-files-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.git-review-file-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 7px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: #94A3B8;
+  background: transparent;
+  border: 1px solid transparent;
+  transition: all 100ms ease;
+  user-select: none;
+}
+
+.git-review-file-item:hover {
+  background: rgba(255, 255, 255, 0.04);
+  color: #F1F5F9;
+}
+
+.git-review-file-item.active {
+  background: rgba(56, 189, 248, 0.12);
+  border-color: rgba(56, 189, 248, 0.3);
+  color: #38BDF8;
+}
+
+.file-item-left {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-status-badge {
+  font-size: 9px;
+  font-weight: 700;
+  padding: 1px 4px;
+  border-radius: 3px;
+  text-transform: uppercase;
+}
+
+.file-status-badge.status-modified {
+  background: rgba(234, 179, 8, 0.15);
+  color: #FACC15;
+}
+
+.file-status-badge.status-added, .file-status-badge.status-untracked {
+  background: rgba(34, 197, 94, 0.15);
+  color: #4ADE80;
+}
+
+.file-status-badge.status-deleted {
+  background: rgba(239, 68, 68, 0.15);
+  color: #F87171;
+}
+
+.file-item-path {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-item-stats {
+  font-size: 10px;
+  display: flex;
+  gap: 3px;
+  flex-shrink: 0;
+  margin-left: 6px;
+}
+
+.file-item-stats .stat-add {
+  color: #4ADE80;
+}
+
+.file-item-stats .stat-del {
+  color: #F87171;
+}
+
+.git-review-diff-pane {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: #030603;
+}
+
+.git-diff-pane-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 14px;
+  background: rgba(255, 255, 255, 0.02);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.diff-file-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.diff-active-filename {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 600;
+  color: #F8FAFC;
+}
+
+.diff-active-stats {
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.git-diff-viewer-content {
+  flex: 1;
+  overflow: auto;
+  padding: 12px 16px;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  line-height: 1.6;
+}
+
+.git-diff-placeholder {
+  color: #64748B;
+  text-align: center;
+  padding: 40px 20px;
+  font-style: italic;
+}
+
+.git-diff-line {
+  white-space: pre;
+  display: flex;
+  align-items: flex-start;
+  padding: 1px 4px;
+  border-radius: 2px;
+}
+
+.git-diff-line.diff-line-add {
+  background: rgba(34, 197, 94, 0.12);
+  color: #4ADE80;
+}
+
+.git-diff-line.diff-line-del {
+  background: rgba(239, 68, 68, 0.12);
+  color: #F87171;
+}
+
+.git-diff-line.diff-line-chunk {
+  background: rgba(56, 189, 248, 0.08);
+  color: #38BDF8;
+  font-weight: 600;
+  margin: 4px 0 2px 0;
+}
+
+.git-diff-line.diff-line-file {
+  color: #94A3B8;
+  font-weight: 600;
+}
+
+.git-diff-line.diff-line-context {
+  color: #CBD5E1;
+}
+
+.git-review-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.git-review-legend {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.legend-color {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+}
+
+.legend-added {
+  background: #4ADE80;
+}
+
+.legend-deleted {
+  background: #F87171;
+}
+
+.legend-modified {
+  background: #FACC15;
+}
+
