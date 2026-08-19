@@ -1253,22 +1253,38 @@ pub async fn stream_desktop_chat(
                 }
 
                 if !tool_calls.is_empty() {
-                    let mut assistant_tool_calls_json = Vec::new();
-                    for tc in &tool_calls {
-                        assistant_tool_calls_json.push(json!({
-                            "id": tc.id,
-                            "type": "function",
-                            "function": {
-                                "name": tc.name,
-                                "arguments": tc.arguments,
-                            }
+                    let is_antigravity = config.model.contains("ag/") || config.model.contains("antigravity");
+                    if is_antigravity {
+                        let action_content = if stream_out.content.trim().is_empty() {
+                            format!("```action\n{{\"tool\": \"{}\", \"args\": {}}}\n```", tool_calls[0].name, tool_calls[0].arguments)
+                        } else {
+                            stream_out.content.clone()
+                        };
+                        dynamic_messages.push(json!({
+                            "role": "assistant",
+                            "content": action_content,
+                        }));
+                    } else {
+                        let mut assistant_tool_calls_json = Vec::new();
+                        for tc in &tool_calls {
+                            assistant_tool_calls_json.push(json!({
+                                "id": tc.id,
+                                "type": "function",
+                                "function": {
+                                    "name": tc.name,
+                                    "arguments": tc.arguments,
+                                }
+                            }));
+                        }
+                        dynamic_messages.push(json!({
+                            "role": "assistant",
+                            "content": if stream_out.content.is_empty() { Value::Null } else { Value::String(stream_out.content) },
+                            "tool_calls": assistant_tool_calls_json,
                         }));
                     }
-                    dynamic_messages.push(json!({
-                        "role": "assistant",
-                        "content": if stream_out.content.is_empty() { Value::Null } else { Value::String(stream_out.content) },
-                        "tool_calls": assistant_tool_calls_json,
-                    }));
+
+                    // Reset final_content so the next turn's synthesized explanation replaces the raw action text
+                    final_content.clear();
 
                     for tc in tool_calls {
                         let tool_start_msg = format!("🛠️ Eksekusi Tool: `{}` ({})", tc.name, tc.arguments);
@@ -1337,12 +1353,19 @@ pub async fn stream_desktop_chat(
                             log_text,
                         );
 
-                        dynamic_messages.push(json!({
-                            "role": "tool",
-                            "tool_call_id": tc.id,
-                            "name": tc.name,
-                            "content": output_text,
-                        }));
+                        if is_antigravity {
+                            dynamic_messages.push(json!({
+                                "role": "user",
+                                "content": format!("[System Tool Observation - Result of `{}`]:\n{}", tc.name, output_text),
+                            }));
+                        } else {
+                            dynamic_messages.push(json!({
+                                "role": "tool",
+                                "tool_call_id": tc.id,
+                                "name": tc.name,
+                                "content": output_text,
+                            }));
+                        }
                     }
                     continue;
                 } else {
@@ -1720,5 +1743,43 @@ Done!
         assert_eq!(calls.len(), 1);
         assert_eq!(calls[0].name, "run_command");
         assert!(calls[0].arguments.contains("npx skills add foo"));
+    }
+
+    #[test]
+    fn test_live_stream_omniroute_multiturn_tool_observation() {
+        let config = DesktopProviderConfig {
+            provider: "custom".to_string(),
+            model: "9r/ag/gemini-3.7-flash-high".to_string(),
+            endpoint: "http://127.0.0.1:20128/v1".to_string(),
+        };
+        let messages = vec![
+            json!({
+                "role": "system",
+                "content": "You are Smara Desktop Assistant.",
+            }),
+            json!({
+                "role": "user",
+                "content": "npx skills add https://github.com/Leonxlnx/taste-skill --skill \"design-taste-frontend\"",
+            }),
+            json!({
+                "role": "assistant",
+                "content": "```action\n{\"tool\": \"run_command\", \"args\": {\"command\": \"npx skills add https://github.com/Leonxlnx/taste-skill --skill \\\"design-taste-frontend\\\"\"}}\n```",
+            }),
+            json!({
+                "role": "user",
+                "content": "[System Tool Observation - Result of `run_command`]:\n✓ Installation complete. Installed 1 skill: design-taste-frontend",
+            }),
+        ];
+        let mut deltas = Vec::new();
+        let res = request_streaming_completion(
+            &config,
+            &messages,
+            &[],
+            |_r| {},
+            |d| deltas.push(d.to_string()),
+            || false,
+        );
+        println!("MULTI-TURN TEST RESULT: {:?}", res);
+        assert!(res.is_ok());
     }
 }
