@@ -396,68 +396,79 @@ pub fn delete_desktop_workspace(
 }
 
 #[tauri::command]
-pub fn get_workspace_file_tree(
+pub async fn get_workspace_file_tree(
     app: AppHandle,
     workspace: Option<String>,
     max_depth: Option<usize>,
 ) -> Result<Vec<WorkspaceFileNode>, String> {
-    let root = resolve_workspace_root(&app, workspace.as_deref());
-    let depth = max_depth.unwrap_or(3);
-    Ok(build_file_tree(&root, &root, 0, depth))
+    tauri::async_runtime::spawn_blocking(move || {
+        let root = resolve_workspace_root(&app, workspace.as_deref());
+        let depth = max_depth.unwrap_or(3);
+        Ok(build_file_tree(&root, &root, 0, depth))
+    })
+    .await
+    .map_err(|e| format!("Task execution failed: {e}"))?
 }
 
 #[tauri::command]
-pub fn get_workspace_git_status(
+pub async fn get_workspace_git_status(
     app: AppHandle,
     workspace: Option<String>,
 ) -> Result<WorkspaceGitStatus, String> {
-    let root = resolve_workspace_root(&app, workspace.as_deref());
-    Ok(get_git_status_for_dir(&root))
+    tauri::async_runtime::spawn_blocking(move || {
+        let root = resolve_workspace_root(&app, workspace.as_deref());
+        Ok(get_git_status_for_dir(&root))
+    })
+    .await
+    .map_err(|e| format!("Task execution failed: {e}"))?
 }
 
 #[tauri::command]
-pub fn read_workspace_file(
+pub async fn read_workspace_file(
     app: AppHandle,
     path: String,
 ) -> Result<WorkspaceFileContent, String> {
-    let root = resolve_workspace_root(&app, None);
-    let target_path = if Path::new(&path).is_absolute() {
-        PathBuf::from(&path)
-    } else {
-        root.join(&path)
-    };
+    tauri::async_runtime::spawn_blocking(move || {
+        let root = resolve_workspace_root(&app, None);
+        let target_path = if Path::new(&path).is_absolute() {
+            PathBuf::from(&path)
+        } else {
+            root.join(&path)
+        };
 
-    if !target_path.exists() {
-        return Err(format!("File not found: {path}"));
-    }
+        if !target_path.exists() {
+            return Err(format!("File not found: {path}"));
+        }
 
-    let metadata = fs::metadata(&target_path)
-        .map_err(|e| format!("Failed to read metadata for {path}: {e}"))?;
-    let size = metadata.len();
+        let metadata = fs::metadata(&target_path)
+            .map_err(|e| format!("Failed to read metadata for {path}: {e}"))?;
+        let size = metadata.len();
 
-    // Read up to 2MB
-    if size > 2 * 1024 * 1024 {
-        return Err("File is too large to preview (> 2MB).".to_string());
-    }
+        // Read up to 2MB
+        if size > 2 * 1024 * 1024 {
+            return Err("File is too large to preview (> 2MB).".to_string());
+        }
 
-    let bytes = fs::read(&target_path)
-        .map_err(|e| format!("Failed to read file {path}: {e}"))?;
+        let bytes = fs::read(&target_path)
+            .map_err(|e| format!("Failed to read file {path}: {e}"))?;
 
-    let is_binary = bytes.iter().take(1024).any(|&b| b == 0);
-    let content = if is_binary {
-        "[Binary file preview not supported]".to_string()
-    } else {
-        String::from_utf8_lossy(&bytes).to_string()
-    };
+        let is_binary = bytes.iter().take(1024).any(|&b| b == 0);
+        let content = if is_binary {
+            "[Binary file preview not supported]".to_string()
+        } else {
+            String::from_utf8_lossy(&bytes).to_string()
+        };
 
-    Ok(WorkspaceFileContent {
-        path: target_path.to_string_lossy().to_string(),
-        content,
-        size,
-        is_binary,
+        Ok(WorkspaceFileContent {
+            path,
+            size,
+            is_binary,
+            content,
+        })
     })
+    .await
+    .map_err(|e| format!("Task execution failed: {e}"))?
 }
-
 #[tauri::command]
 pub fn apply_code_to_file(
     app: AppHandle,
