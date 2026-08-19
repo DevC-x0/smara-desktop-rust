@@ -206,6 +206,30 @@ pub fn list_desktop_builtin_tools_internal() -> Vec<DesktopBuiltinTool> {
             "safe-readonly",
             false,
         ),
+        tool(
+            "install_mcp_server",
+            "Install and register a new Model Context Protocol (MCP) server into Smara Desktop configuration.",
+            "safe-readonly",
+            false,
+        ),
+        tool(
+            "list_installed_mcp_servers",
+            "List all currently configured MCP servers in Smara Desktop.",
+            "safe-readonly",
+            false,
+        ),
+        tool(
+            "install_skill",
+            "Install and register a new reusable automation skill into Smara Desktop configuration.",
+            "safe-readonly",
+            false,
+        ),
+        tool(
+            "list_installed_skills",
+            "List all currently configured automation skills in Smara Desktop.",
+            "safe-readonly",
+            false,
+        ),
     ]
 }
 
@@ -486,6 +510,76 @@ pub fn export_openai_tools_schema() -> Vec<Value> {
                     "required": ["query"]
                 }
             }
+        }),
+        serde_json::json!({
+            "type": "function",
+            "function": {
+                "name": "install_mcp_server",
+                "description": "Install and register a new Model Context Protocol (MCP) server into Smara Desktop configuration.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "name": { "type": "string", "description": "Unique identifier name for the MCP server (e.g. 'playwright', 'github', 'sqlite')" },
+                        "command": { "type": "string", "description": "Executable or CLI command (e.g. 'npx', 'uvx', 'python3', or binary path)" },
+                        "args": {
+                            "type": "array",
+                            "items": { "type": "string" },
+                            "description": "Command line arguments (e.g. ['-y', '@modelcontextprotocol/server-playwright'])"
+                        },
+                        "env": {
+                            "type": "object",
+                            "description": "Optional environment variables key-value map (e.g. {'API_KEY': '...'})"
+                        }
+                    },
+                    "required": ["name", "command"]
+                }
+            }
+        }),
+        serde_json::json!({
+            "type": "function",
+            "function": {
+                "name": "list_installed_mcp_servers",
+                "description": "List all configured Model Context Protocol (MCP) servers in Smara Desktop.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {}
+                }
+            }
+        }),
+        serde_json::json!({
+            "type": "function",
+            "function": {
+                "name": "install_skill",
+                "description": "Install or create a new reusable automation skill in Smara Desktop configuration.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "name": { "type": "string", "description": "Unique name for the skill (e.g. 'impeccable', 'docker_audit')" },
+                        "description": { "type": "string", "description": "Detailed explanation of what the skill does" },
+                        "tags": {
+                            "type": "array",
+                            "items": { "type": "string" },
+                            "description": "Tags describing the skill categories (e.g. ['uiux', 'design'])"
+                        },
+                        "steps": {
+                            "type": "array",
+                            "description": "Array of step objects (e.g. [{'tool': 'run_command', 'args': {'command': 'npx --yes impeccable __PARAM__prompt'}}])"
+                        }
+                    },
+                    "required": ["name", "description", "steps"]
+                }
+            }
+        }),
+        serde_json::json!({
+            "type": "function",
+            "function": {
+                "name": "list_installed_skills",
+                "description": "List all configured automation skills in Smara Desktop.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {}
+                }
+            }
         })
     ]
 }
@@ -558,6 +652,20 @@ fn validate_approval(tool: &str, approval: Option<&DesktopToolApproval>) -> Resu
         return Err("Approval receipt is too old.".to_string());
     }
     Ok(())
+}
+
+fn mcp_servers_config_path() -> PathBuf {
+    let home = std::env::var("HOME").unwrap_or_else(|_| "/home/cahya".to_string());
+    let config_dir = PathBuf::from(&home).join(".config/id.smara.desktop.rust");
+    let _ = fs::create_dir_all(&config_dir);
+    config_dir.join("mcp-servers.json")
+}
+
+fn skills_config_path() -> PathBuf {
+    let home = std::env::var("HOME").unwrap_or_else(|_| "/home/cahya".to_string());
+    let config_dir = PathBuf::from(&home).join(".config/id.smara.desktop.rust");
+    let _ = fs::create_dir_all(&config_dir);
+    config_dir.join("skills.json")
 }
 
 fn workspace_root(path: &str) -> Result<PathBuf, String> {
@@ -1550,6 +1658,122 @@ fn execute(root: &Path, tool: &str, args: &Value) -> Result<String, String> {
 
             Ok(format!("HTTP {status} from {url}\n\n{preview}"))
         }
+        "install_mcp_server" => {
+            let name = get_string(args, "name")?.trim().to_string();
+            let command = get_string(args, "command")?.trim().to_string();
+            let args_list = if let Some(arr) = args.get("args").and_then(Value::as_array) {
+                arr.iter().filter_map(|v| v.as_str().map(String::from)).collect::<Vec<_>>()
+            } else {
+                Vec::new()
+            };
+            let env_map = if let Some(obj) = args.get("env").and_then(Value::as_object) {
+                obj.iter().filter_map(|(k, v)| v.as_str().map(|s| (k.clone(), s.to_string()))).collect::<std::collections::HashMap<_, _>>()
+            } else {
+                std::collections::HashMap::new()
+            };
+
+            let path = mcp_servers_config_path();
+            let mut servers: Vec<serde_json::Value> = if path.exists() {
+                let raw = fs::read_to_string(&path).unwrap_or_else(|_| "[]".to_string());
+                serde_json::from_str(&raw).unwrap_or_default()
+            } else {
+                Vec::new()
+            };
+
+            servers.retain(|s| s.get("name").and_then(Value::as_str) != Some(&name));
+            
+            let now = now_ms();
+            let new_server = serde_json::json!({
+                "name": name,
+                "command": command,
+                "args": args_list,
+                "env": env_map,
+                "created_at_ms": now,
+                "updated_at_ms": now,
+            });
+            servers.push(new_server);
+
+            let raw = serde_json::to_string_pretty(&servers)
+                .map_err(|e| format!("Failed to serialize mcp servers: {e}"))?;
+            fs::write(&path, raw).map_err(|e| format!("Failed to write mcp servers: {e}"))?;
+
+            Ok(format!("✓ MCP Server `{name}` berhasil diinstall dan disimpan ke konfigurasi Smara Desktop!\nCommand: `{command}`\nArgs: {:?}", args_list))
+        }
+        "list_installed_mcp_servers" => {
+            let path = mcp_servers_config_path();
+            if !path.exists() {
+                return Ok("Belum ada MCP server yang diinstall.".to_string());
+            }
+            let raw = fs::read_to_string(&path).map_err(|e| format!("Failed to read mcp servers: {e}"))?;
+            let servers: Vec<serde_json::Value> = serde_json::from_str(&raw).unwrap_or_default();
+            if servers.is_empty() {
+                return Ok("Belum ada MCP server yang diinstall.".to_string());
+            }
+            let list = servers.iter().map(|s| {
+                let name = s.get("name").and_then(Value::as_str).unwrap_or("-");
+                let cmd = s.get("command").and_then(Value::as_str).unwrap_or("-");
+                let args = s.get("args").and_then(Value::as_array).map(|a| a.iter().filter_map(Value::as_str).collect::<Vec<_>>().join(" ")).unwrap_or_default();
+                format!("- `{name}`: `{cmd} {args}`")
+            }).collect::<Vec<_>>().join("\n");
+            Ok(format!("Configured MCP Servers ({}):\n{}", servers.len(), list))
+        }
+        "install_skill" => {
+            let name = get_string(args, "name")?.trim().to_string();
+            let description = get_string(args, "description")
+                .map(String::from)
+                .unwrap_or_else(|_| format!("Automation skill {name}"));
+            let tags = if let Some(arr) = args.get("tags").and_then(Value::as_array) {
+                arr.iter().filter_map(|v| v.as_str().map(String::from)).collect::<Vec<_>>()
+            } else {
+                vec!["custom".to_string()]
+            };
+            let steps = args.get("steps").cloned().unwrap_or_else(|| serde_json::json!([]));
+
+            let path = skills_config_path();
+            let mut skills: Vec<serde_json::Value> = if path.exists() {
+                let raw = fs::read_to_string(&path).unwrap_or_else(|_| "[]".to_string());
+                serde_json::from_str(&raw).unwrap_or_default()
+            } else {
+                Vec::new()
+            };
+
+            skills.retain(|s| s.get("name").and_then(Value::as_str) != Some(&name));
+
+            let now = now_ms();
+            let new_skill = serde_json::json!({
+                "name": name,
+                "description": description,
+                "tags": tags,
+                "steps": steps,
+                "version": 1,
+                "created_at_ms": now,
+                "updated_at_ms": now,
+            });
+            skills.push(new_skill);
+
+            let raw = serde_json::to_string_pretty(&skills)
+                .map_err(|e| format!("Failed to serialize skills: {e}"))?;
+            fs::write(&path, raw).map_err(|e| format!("Failed to write skills: {e}"))?;
+
+            Ok(format!("✓ Skill `{name}` berhasil diinstall dan didaftarkan ke Smara Desktop!\nDeskripsi: {description}"))
+        }
+        "list_installed_skills" => {
+            let path = skills_config_path();
+            if !path.exists() {
+                return Ok("Belum ada skill yang diinstall.".to_string());
+            }
+            let raw = fs::read_to_string(&path).map_err(|e| format!("Failed to read skills: {e}"))?;
+            let skills: Vec<serde_json::Value> = serde_json::from_str(&raw).unwrap_or_default();
+            if skills.is_empty() {
+                return Ok("Belum ada skill yang diinstall.".to_string());
+            }
+            let list = skills.iter().map(|s| {
+                let name = s.get("name").and_then(Value::as_str).unwrap_or("-");
+                let desc = s.get("description").and_then(Value::as_str).unwrap_or("-");
+                format!("- **{name}**: {desc}")
+            }).collect::<Vec<_>>().join("\n");
+            Ok(format!("Configured Automation Skills ({}):\n{}", skills.len(), list))
+        }
         _ => Err(format!("Unsupported Desktop built-in tool '{tool}'.")),
     }
 }
@@ -1790,6 +2014,46 @@ mod tests {
 
         let result = run(&root, "query_code_graph", json!({"query": "SmaraCore"}), false).unwrap();
         assert!(result.output.contains("SmaraCore"));
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn install_mcp_server_and_skills_from_prompt_tools() {
+        let root = temp_workspace();
+        
+        let mcp_res = run(
+            &root,
+            "install_mcp_server",
+            json!({
+                "name": "sqlite_test_mcp",
+                "command": "uvx",
+                "args": ["mcp-server-sqlite", "--db-path", "/tmp/test.db"]
+            }),
+            false,
+        )
+        .unwrap();
+        assert!(mcp_res.output.contains("sqlite_test_mcp"));
+
+        let list_mcp = run(&root, "list_installed_mcp_servers", json!({}), false).unwrap();
+        assert!(list_mcp.output.contains("sqlite_test_mcp"));
+
+        let skill_res = run(
+            &root,
+            "install_skill",
+            json!({
+                "name": "docker_cleaner",
+                "description": "Clean unused docker containers and images",
+                "tags": ["docker", "devops"],
+                "steps": [{"tool": "run_command", "args": {"command": "docker system prune -f"}}]
+            }),
+            false,
+        )
+        .unwrap();
+        assert!(skill_res.output.contains("docker_cleaner"));
+
+        let list_skills = run(&root, "list_installed_skills", json!({}), false).unwrap();
+        assert!(list_skills.output.contains("docker_cleaner"));
+
         let _ = fs::remove_dir_all(root);
     }
 }
