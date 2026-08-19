@@ -574,13 +574,16 @@ mod tests {
         let _ = std::fs::remove_dir_all(root);
     }
 
+    static TEST_DIR_SEQUENCE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
     #[cfg(unix)]
     #[test]
     fn mcp_stdio_handshake_discovers_and_calls_tool() {
         use std::os::unix::fs::PermissionsExt;
 
+        let seq = TEST_DIR_SEQUENCE.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         let root = std::env::temp_dir().join(format!(
-            "smara-mcp-stdio-{}-{}",
+            "smara-mcp-stdio-{}-{}-{seq}",
             std::process::id(),
             crate::app_state::now_ms()
         ));
@@ -632,8 +635,9 @@ done
     fn mcp_pool_reuses_a_stdio_process_for_repeated_calls() {
         use std::os::unix::fs::PermissionsExt;
 
+        let seq = TEST_DIR_SEQUENCE.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         let root = std::env::temp_dir().join(format!(
-            "smara-mcp-pool-{}-{}",
+            "smara-mcp-pool-{}-{}-{seq}",
             std::process::id(),
             crate::app_state::now_ms()
         ));

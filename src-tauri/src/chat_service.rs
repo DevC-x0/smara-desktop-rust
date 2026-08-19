@@ -177,13 +177,34 @@ fn save_sessions_to(path: &Path, sessions: &[DesktopChatSession]) -> Result<(), 
 }
 
 fn provider_api_key(provider: &str) -> Option<String> {
-    let key = match provider {
-        "openai" => "OPENAI_API_KEY",
-        "openrouter" => "OPENROUTER_API_KEY",
-        "anthropic" => "ANTHROPIC_API_KEY",
-        _ => return None,
-    };
-    env::var(key).ok().filter(|value| !value.trim().is_empty())
+    match provider {
+        "openai" => env::var("OPENAI_API_KEY")
+            .or_else(|_| env::var("SMARA_API_KEY"))
+            .ok()
+            .filter(|v| !v.trim().is_empty()),
+        "openrouter" => env::var("OPENROUTER_API_KEY")
+            .or_else(|_| env::var("SMARA_API_KEY"))
+            .ok()
+            .filter(|v| !v.trim().is_empty()),
+        "anthropic" => env::var("ANTHROPIC_API_KEY")
+            .or_else(|_| env::var("SMARA_API_KEY"))
+            .ok()
+            .filter(|v| !v.trim().is_empty()),
+        "custom" => {
+            for key in &["CUSTOM_API_KEY", "SMARA_API_KEY", "NINE_ROUTER_API_KEY", "OPENAI_API_KEY"] {
+                if let Ok(val) = env::var(key) {
+                    if !val.trim().is_empty() {
+                        return Some(val.trim().to_string());
+                    }
+                }
+            }
+            None
+        }
+        _ => env::var("SMARA_API_KEY")
+            .or_else(|_| env::var("OPENAI_API_KEY"))
+            .ok()
+            .filter(|v| !v.trim().is_empty()),
+    }
 }
 
 fn chat_url(config: &DesktopProviderConfig) -> String {
@@ -718,6 +739,11 @@ fn request_streaming_completion(
     let response = request
         .send()
         .map_err(|error| format!("Provider stream request failed: {error}"))?;
+    let status = response.status();
+    if !status.is_success() {
+        let body = response.text().unwrap_or_default();
+        return Err(format!("Provider stream HTTP error {status}: {body}"));
+    }
     stream_response_lines(
         response,
         on_reasoning,
