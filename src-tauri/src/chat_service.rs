@@ -601,6 +601,7 @@ fn stream_response_lines(
         return Err(format!("Provider returned HTTP {status}: {body}"));
     }
     let mut full = String::new();
+    let mut full_reasoning = String::new();
     let mut in_think_tag = false;
     let mut tool_calls_map: std::collections::BTreeMap<usize, DesktopToolCall> = std::collections::BTreeMap::new();
 
@@ -647,9 +648,11 @@ fn stream_response_lines(
         if let Some(reasoning) = event.pointer("/choices/0/delta/reasoning_content")
             .or_else(|| event.pointer("/choices/0/delta/reasoning"))
             .or_else(|| event.pointer("/choices/0/delta/thought"))
+            .or_else(|| event.pointer("/choices/0/message/reasoning_content"))
             .and_then(Value::as_str)
             .filter(|s| !s.is_empty())
         {
+            full_reasoning.push_str(reasoning);
             on_reasoning(reasoning);
         }
 
@@ -675,10 +678,15 @@ fn stream_response_lines(
         }
 
         // 3. Check content delta (with embedded <think> handling)
-        if let Some(content) = event.pointer("/choices/0/delta/content")
+        let content_opt = event.pointer("/choices/0/delta/content")
+            .or_else(|| event.pointer("/choices/0/text"))
+            .or_else(|| event.pointer("/choices/0/delta/text"))
+            .or_else(|| event.pointer("/choices/0/message/content"))
+            .or_else(|| event.pointer("/content"))
             .and_then(Value::as_str)
-            .filter(|s| !s.is_empty())
-        {
+            .filter(|s| !s.is_empty());
+
+        if let Some(content) = content_opt {
             if content.contains("<think>") {
                 in_think_tag = true;
                 let parts: Vec<&str> = content.split("<think>").collect();
@@ -719,7 +727,12 @@ fn stream_response_lines(
     }
     let tool_calls: Vec<DesktopToolCall> = tool_calls_map.into_values().filter(|tc| !tc.name.is_empty()).collect();
     if full.trim().is_empty() && tool_calls.is_empty() {
-        return Err("Provider stream completed without text content or tool calls.".to_string());
+        if !full_reasoning.trim().is_empty() {
+            full = full_reasoning;
+            on_delta(&full);
+        } else {
+            return Err("Provider stream completed without text content or tool calls.".to_string());
+        }
     }
     Ok(StreamCompletionOutput {
         content: full,
@@ -1580,6 +1593,41 @@ mod tests {
             assert_eq!(response.content, expected);
             assert_eq!(deltas.concat(), expected);
             server.join().unwrap();
+        }
+    }
+
+    #[test]
+    fn test_live_stream_omniroute() {
+        let config = DesktopProviderConfig {
+            provider: "custom".to_string(),
+            model: "9r/ag/gemini-3.7-flash-high".to_string(),
+            endpoint: "http://127.0.0.1:20128/v1".to_string(),
+        };
+        let messages = vec![
+            json!({
+                "role": "system",
+                "content": "You are Smara Desktop Assistant.",
+            }),
+            json!({
+                "role": "user",
+                "content": "npx skills add https://github.com/Leonxlnx/taste-skill --skill \"design-taste-frontend\"",
+            }),
+        ];
+        let mut deltas = Vec::new();
+        let mut reasoning_chunks = Vec::new();
+        let tools = crate::builtin_tools::export_openai_tools_schema();
+        let res = request_streaming_completion(
+            &config,
+            &messages,
+            &tools,
+            |r| reasoning_chunks.push(r.to_string()),
+            |d| deltas.push(d.to_string()),
+            || false,
+        );
+        println!("TEST RESULT: {:?}", res);
+        println!("DELTAS LEN: {}, REASONING LEN: {}", deltas.len(), reasoning_chunks.len());
+        if let Ok(ref out) = res {
+            println!("CONTENT: {}", out.content);
         }
     }
 }
