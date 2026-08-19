@@ -1268,6 +1268,10 @@ test('opens and reviews file changes in git diff review modal', async ({ page })
   await expect(page.locator('#git-diff-viewer-content')).toContainText('// Smara Desktop');
   await expect(page.locator('#git-diff-viewer-content .diff-line-add')).toHaveCount(3);
 
+  // Take high resolution screenshot of Git Diff Review Modal
+  await page.waitForTimeout(300);
+  await page.screenshot({ path: '/home/cahya/.gemini/antigravity/brain/9f9ccaa3-3e79-4763-8864-344f94eb7e24/git_diff_review_screenshot.png' });
+
   // Click second file (src/new_feature.ts)
   await page.locator('.git-review-file-item[data-path="src/new_feature.ts"]').click();
   await expect(page.locator('#git-diff-active-filename')).toContainText('src/new_feature.ts');
