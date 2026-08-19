@@ -14,6 +14,18 @@ pub struct DesktopSettings {
     pub history_limit: usize,
 }
 
+pub fn safe_truncate_str(s: &str, max_bytes: usize) -> &str {
+    if s.len() <= max_bytes {
+        s
+    } else {
+        let mut end = max_bytes;
+        while !s.is_char_boundary(end) {
+            end = end.saturating_sub(1);
+        }
+        &s[..end]
+    }
+}
+
 impl Default for DesktopSettings {
     fn default() -> Self {
         Self {
@@ -399,7 +411,7 @@ pub fn trim_run_history_to_limit(app: AppHandle) -> Result<Vec<RunHistoryItem>, 
 
 #[cfg(test)]
 mod tests {
-    use super::{history_item_status, normalize_settings, DesktopSettings, RunHistoryItem};
+    use super::{history_item_status, normalize_settings, safe_truncate_str, DesktopSettings, RunHistoryItem};
 
     fn history_item() -> RunHistoryItem {
         RunHistoryItem {
@@ -446,5 +458,24 @@ mod tests {
     fn normalize_settings_caps_imported_history_limit() {
         let settings = normalize_settings(DesktopSettings { history_limit: 999 });
         assert_eq!(settings.history_limit, 50);
+    }
+
+    #[test]
+    fn test_safe_truncate_str_multibyte() {
+        // '█' is 3 bytes (0xE2 0x96 0x88)
+        let sample = "a".repeat(159) + "████";
+        // Byte index 160 is inside the first '█' (bytes 159..162)
+        // With standard slicing `&sample[..160]`, this would PANIC.
+        // With safe_truncate_str, it safely truncates to byte 159 without panic!
+        let truncated = safe_truncate_str(&sample, 160);
+        assert_eq!(truncated.len(), 159);
+        assert_eq!(truncated, "a".repeat(159));
+
+        // Test other multi-byte characters like emojis and box drawing
+        let box_sample = "╭─── ⚡ Testing Unicode: ◒ ◐ ◓ ◑ ───╮";
+        for i in 0..box_sample.len() + 10 {
+            let res = safe_truncate_str(box_sample, i);
+            assert!(res.len() <= i);
+        }
     }
 }

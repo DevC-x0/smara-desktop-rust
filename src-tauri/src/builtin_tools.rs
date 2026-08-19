@@ -1056,7 +1056,7 @@ fn execute(root: &Path, tool: &str, args: &Value) -> Result<String, String> {
                         Ok(format!("✅ No errors in {}", path.display()))
                     } else {
                         let truncated = if combined.len() > 3000 {
-                            format!("{}...\n(truncated)", &combined[..3000])
+                            format!("{}...\n(truncated)", crate::app_state::safe_truncate_str(&combined, 3000))
                         } else {
                             combined
                         };
@@ -1132,7 +1132,7 @@ fn execute(root: &Path, tool: &str, args: &Value) -> Result<String, String> {
                 }
             } else {
                 let truncated = if stdout.len() > 5000 {
-                    format!("{}...\n(truncated)", &stdout[..5000])
+                    format!("{}...\n(truncated)", crate::app_state::safe_truncate_str(&stdout, 5000))
                 } else {
                     stdout.to_string()
                 };
@@ -1649,10 +1649,10 @@ fn execute(root: &Path, tool: &str, args: &Value) -> Result<String, String> {
                 .join("\n");
 
             let preview = if text_only.len() > 3000 {
-                format!("{}...\n[Truncated]", &text_only[..3000])
+                format!("{}...\n[Truncated]", crate::app_state::safe_truncate_str(&text_only, 3000))
             } else if text_only.is_empty() {
                 if body.len() > 3000 {
-                    format!("{}...\n[Raw Content Truncated]", &body[..3000])
+                    format!("{}...\n[Raw Content Truncated]", crate::app_state::safe_truncate_str(&body, 3000))
                 } else {
                     body
                 }

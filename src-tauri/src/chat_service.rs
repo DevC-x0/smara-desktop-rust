@@ -1326,7 +1326,7 @@ pub async fn stream_desktop_chat(
                         let (output_text, log_kind, log_text) = match exec_result {
                             Ok(res) => {
                                 let preview = if res.output.len() > 160 {
-                                    format!("{}...", &res.output[..160])
+                                    format!("{}...", crate::app_state::safe_truncate_str(&res.output, 160))
                                 } else {
                                     res.output.clone()
                                 };
