@@ -237,6 +237,35 @@ fn is_direct_cli_command(query: &str) -> bool {
     prefixes.iter().any(|prefix| q.starts_with(prefix))
 }
 
+fn parse_json_relaxed(s: &str) -> Option<Value> {
+    let trimmed = s.trim();
+    if let Ok(val) = serde_json::from_str::<Value>(trimmed) {
+        return Some(val);
+    }
+    let unquoted = trimmed.trim_matches(|c| c == '`' || c == '\n' || c == '\r' || c == ' ');
+    if let Ok(val) = serde_json::from_str::<Value>(unquoted) {
+        return Some(val);
+    }
+    if let Some(first_brace) = unquoted.find('{') {
+        let candidate = &unquoted[first_brace..];
+        if let Ok(val) = serde_json::from_str::<Value>(candidate) {
+            return Some(val);
+        }
+        let mut r_idx = candidate.rfind('}');
+        while let Some(idx) = r_idx {
+            if idx == 0 {
+                break;
+            }
+            let sub = &candidate[..=idx];
+            if let Ok(val) = serde_json::from_str::<Value>(sub) {
+                return Some(val);
+            }
+            r_idx = candidate[..idx].rfind('}');
+        }
+    }
+    None
+}
+
 fn extract_text_tool_calls(text: &str) -> Vec<DesktopToolCall> {
     let mut calls = Vec::new();
     for block_type in &["action", "tool_call", "tool", "json"] {
@@ -246,22 +275,49 @@ fn extract_text_tool_calls(text: &str) -> Vec<DesktopToolCall> {
             let abs_start = search_idx + start_pos + pattern.len();
             if let Some(end_pos) = text[abs_start..].find("```") {
                 let json_str = text[abs_start..abs_start + end_pos].trim();
-                if let Ok(val) = serde_json::from_str::<Value>(json_str) {
+                if let Some(val) = parse_json_relaxed(json_str) {
                     if let Some(tool_name) = val.get("tool").or_else(|| val.get("name")).or_else(|| val.get("action")).and_then(Value::as_str) {
                         let args = val.get("args").or_else(|| val.get("arguments")).or_else(|| val.get("parameters")).cloned().unwrap_or_else(|| json!({}));
                         calls.push(DesktopToolCall {
                             id: format!("call-{}", now_ms()),
                             name: tool_name.to_string(),
-                            arguments: if args.is_string() { args.as_str().unwrap().to_string() } else { args.to_string() },
+                            arguments: if args.is_string() { args.as_str().unwrap_or_default().to_string() } else { args.to_string() },
                         });
                     }
                 }
                 search_idx = abs_start + end_pos + 3;
             } else {
+                let json_str = text[abs_start..].trim();
+                if let Some(val) = parse_json_relaxed(json_str) {
+                    if let Some(tool_name) = val.get("tool").or_else(|| val.get("name")).or_else(|| val.get("action")).and_then(Value::as_str) {
+                        let args = val.get("args").or_else(|| val.get("arguments")).or_else(|| val.get("parameters")).cloned().unwrap_or_else(|| json!({}));
+                        calls.push(DesktopToolCall {
+                            id: format!("call-{}", now_ms()),
+                            name: tool_name.to_string(),
+                            arguments: if args.is_string() { args.as_str().unwrap_or_default().to_string() } else { args.to_string() },
+                        });
+                    }
+                }
                 break;
             }
         }
     }
+
+    if calls.is_empty() {
+        if let Some(pos) = text.find("{\"tool\":").or_else(|| text.find("{\"action\":")).or_else(|| text.find("{\n  \"tool\":")) {
+            if let Some(val) = parse_json_relaxed(&text[pos..]) {
+                if let Some(tool_name) = val.get("tool").or_else(|| val.get("name")).or_else(|| val.get("action")).and_then(Value::as_str) {
+                    let args = val.get("args").or_else(|| val.get("arguments")).or_else(|| val.get("parameters")).cloned().unwrap_or_else(|| json!({}));
+                    calls.push(DesktopToolCall {
+                        id: format!("call-{}", now_ms()),
+                        name: tool_name.to_string(),
+                        arguments: if args.is_string() { args.as_str().unwrap_or_default().to_string() } else { args.to_string() },
+                    });
+                }
+            }
+        }
+    }
+
     calls
 }
 
@@ -1743,6 +1799,26 @@ Done!
         assert_eq!(calls.len(), 1);
         assert_eq!(calls[0].name, "run_command");
         assert!(calls[0].arguments.contains("npx skills add foo"));
+
+        // Test with trailing brace / newline from user's screenshot
+        let text_with_trailing_brace = r#"
+```action
+{"tool": "search_web", "args": {"query": "\"F_4NooL4Z2w\" OR \"Point Blank\" Linux youtube"}}
+}
+```
+"#;
+        let calls2 = extract_text_tool_calls(text_with_trailing_brace);
+        assert_eq!(calls2.len(), 1);
+        assert_eq!(calls2[0].name, "search_web");
+        assert!(calls2[0].arguments.contains("search_web") || calls2[0].arguments.contains("F_4NooL4Z2w"));
+
+        // Test with raw JSON without code block
+        let text_raw_json = r#"
+{"tool": "search_web", "args": {"query": "point blank linux"}}
+"#;
+        let calls3 = extract_text_tool_calls(text_raw_json);
+        assert_eq!(calls3.len(), 1);
+        assert_eq!(calls3[0].name, "search_web");
     }
 
     #[test]
