@@ -1286,5 +1286,22 @@ test('opens and reviews file changes in git diff review modal', async ({ page })
   await expect(reviewModal).toBeHidden();
 });
 
+test('displays dynamic loading and running status indicators during tool execution', async ({ page }) => {
+  await installMockTauri(page);
+  await page.goto('/');
+  await openDesktopPage(page, 'chat');
+
+  // Submit command
+  await page.locator('#chat-input').fill('cek storage');
+  await page.locator('#send-chat-button').click();
+
+  // Cancel button should appear while running
+  await expect(page.locator('#cancel-chat-stream-button')).toBeVisible();
+
+  // Wait for stream completion
+  await expect(page.locator('#chat-status')).toContainText('Streaming selesai');
+  await expect(page.locator('#cancel-chat-stream-button')).toBeHidden();
+});
+
 
 

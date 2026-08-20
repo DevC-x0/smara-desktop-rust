@@ -2479,6 +2479,109 @@ if (typeof window !== 'undefined') {
 
 let userScrolledUp = false;
 let chatStreamRenderRaf: number | null = null;
+let activeStreamStartTime = Date.now();
+let activeStreamInterval: number | null = null;
+
+function startActiveStreamTimer() {
+  stopActiveStreamTimer();
+  activeStreamStartTime = Date.now();
+  activeStreamInterval = window.setInterval(() => {
+    if (!activeChatStreamRequestId) {
+      stopActiveStreamTimer();
+      return;
+    }
+    updateLiveExecutionTimer();
+  }, 500);
+}
+
+function stopActiveStreamTimer() {
+  if (activeStreamInterval !== null) {
+    clearInterval(activeStreamInterval);
+    activeStreamInterval = null;
+  }
+}
+
+function updateLiveExecutionTimer() {
+  if (!activeChatStreamRequestId) return;
+  const elapsedSec = Math.max(1, Math.round((Date.now() - activeStreamStartTime) / 1000));
+
+  const liveRootText = document.querySelector<HTMLElement>('.chat-process-live .tree-status-text');
+  if (liveRootText) {
+    liveRootText.textContent = `Working for ${elapsedSec}s`;
+  }
+
+  const liveElapsedBadge = document.querySelector<HTMLElement>('.agent-live-status-card .live-elapsed-time');
+  if (liveElapsedBadge) {
+    liveElapsedBadge.textContent = `${elapsedSec}s`;
+  }
+
+  const runningStep = document.querySelector<HTMLElement>('.agent-tree-row.is-running-step .tree-action-verb');
+  if (runningStep) {
+    const actions = aggregateAgentProcesses(activeChatProcesses);
+    const runningAction = [...actions].reverse().find((a) => a.status === 'running');
+    if (runningAction) {
+      if (runningAction.toolName === 'run_command') {
+        runningStep.textContent = `Running (${elapsedSec}s)...`;
+      } else if (runningAction.category === 'reasoning') {
+        runningStep.textContent = `Thinking (${elapsedSec}s)...`;
+      }
+    }
+  }
+
+  if (chatStatus && activeChatStreamRequestId) {
+    const actions = aggregateAgentProcesses(activeChatProcesses);
+    const runningAction = [...actions].reverse().find((a) => a.status === 'running');
+    if (runningAction) {
+      const toolLabel = runningAction.toolName ? `\`${runningAction.toolName}\`` : runningAction.title;
+      chatStatus.textContent = `⚡ Menjalankan ${toolLabel} (${elapsedSec}s)...`;
+    }
+  }
+}
+
+function isRawActionBlock(content: string): boolean {
+  const trimmed = content.trim();
+  return (
+    trimmed.startsWith('```action') ||
+    trimmed.startsWith('```tool_call') ||
+    trimmed.startsWith('```tool') ||
+    (trimmed.startsWith('```json') && (trimmed.includes('"tool"') || trimmed.includes('"action"'))) ||
+    (trimmed.startsWith('{"tool":') && trimmed.endsWith('}')) ||
+    (trimmed.startsWith('{"tool":') && !trimmed.includes('\n\n'))
+  );
+}
+
+function escapeHtml(text: string): string {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}
+
+function renderLiveExecutionCard(runningAction?: UnifiedAgentAction, elapsedSec?: number): string {
+  const toolName = runningAction?.toolName || runningAction?.title || 'agent_process';
+  const toolTarget = runningAction?.toolTarget || runningAction?.output || 'Sedang memproses perintah sistem...';
+  const sec = elapsedSec ?? Math.max(1, Math.round((Date.now() - activeStreamStartTime) / 1000));
+
+  return `
+    <div class="agent-live-status-card">
+      <div class="live-status-main">
+        <div class="live-status-spinner-wrap">
+          <span class="live-status-spinner"></span>
+        </div>
+        <div class="live-status-details">
+          <div class="live-status-title">
+            <span class="live-pill-tag">⚡ RUNNING</span>
+            <span class="live-tool-title">${escapeHtml(toolName)}</span>
+          </div>
+          <div class="live-status-sub" title="${escapeHtml(toolTarget)}">${escapeHtml(toolTarget)}</div>
+        </div>
+        <div class="live-elapsed-time">${sec}s</div>
+      </div>
+      <div class="live-status-progress-track">
+        <div class="live-status-progress-bar"></div>
+      </div>
+    </div>
+  `;
+}
 
 function scheduleChatStreamRender() {
   if (chatStreamRenderRaf !== null) return;
@@ -2511,10 +2614,15 @@ function renderStreamingMessageInPlace(session: DesktopChatSession, targetStream
 
   const body = streamingItem.querySelector<HTMLElement>('.chat-message-body');
   if (body) {
-    if (targetMessage.content) {
-      body.innerHTML = marked.parse(targetMessage.content) as string;
+    const isAction = isRawActionBlock(targetMessage.content);
+    if (!targetMessage.content || isAction) {
+      const actions = aggregateAgentProcesses(activeChatProcesses);
+      const runningAction = [...actions].reverse().find((a) => a.status === 'running') || actions[actions.length - 1];
+      body.innerHTML = renderLiveExecutionCard(runningAction);
     } else {
-      body.innerHTML = '<div class="typing-indicator"><span></span><span></span><span></span></div>';
+      body.innerHTML = (marked.parse(targetMessage.content) as string) + `
+        <div class="live-streaming-tail"><span class="typing-dot"></span> Sedang menghasilkan respons...</div>
+      `;
     }
   }
 
@@ -2586,8 +2694,19 @@ function renderFullChatMessages(session: DesktopChatSession) {
       });
       item.append(editBtn);
     } else {
-      if (message.content) {
+      const isStreamingActive = message.id === `stream-${activeChatStreamRequestId}`;
+      const isAction = isRawActionBlock(message.content);
+      if (isStreamingActive && (!message.content || isAction)) {
+        const actions = aggregateAgentProcesses(activeChatProcesses);
+        const runningAction = [...actions].reverse().find((a) => a.status === 'running') || actions[actions.length - 1];
+        body.innerHTML = renderLiveExecutionCard(runningAction);
+      } else if (message.content) {
         body.innerHTML = marked.parse(message.content) as string;
+        if (isStreamingActive) {
+          body.innerHTML += `
+            <div class="live-streaming-tail"><span class="typing-dot"></span> Sedang menghasilkan respons...</div>
+          `;
+        }
 
         body.querySelectorAll('pre code').forEach((codeBlock) => {
           const text = codeBlock.textContent || '';
@@ -3450,6 +3569,13 @@ function renderChatProcess(processes: ChatProcessEntry[], running: boolean) {
     let hasDrawer = false;
     let drawerContent: HTMLElement | null = null;
 
+    if (isActionRunning) {
+      row.classList.add('is-running-step');
+      const spinner = document.createElement('span');
+      spinner.className = 'tree-step-spinner';
+      row.append(spinner);
+    }
+
     if (action.category === 'reasoning') {
       const rawText = action.output || '';
       const dur = Math.max(1, Math.round(((action.endTime || Date.now()) - action.startTime) / 1000));
@@ -3468,7 +3594,7 @@ function renderChatProcess(processes: ChatProcessEntry[], running: boolean) {
     } else if (action.toolName === 'read_file' || action.toolName === 'view_file') {
       const verb = document.createElement('span');
       verb.className = 'tree-action-verb';
-      verb.textContent = 'Analyzed';
+      verb.textContent = isActionRunning ? 'Analyzing' : 'Analyzed';
 
       const targetPath = action.toolTarget || 'file';
       const badgeInfo = getFileExtensionBadge(targetPath);
@@ -3505,7 +3631,9 @@ function renderChatProcess(processes: ChatProcessEntry[], running: boolean) {
     } else if (action.toolName === 'edit_file' || action.toolName === 'write_file' || action.toolName === 'apply_diff') {
       const verb = document.createElement('span');
       verb.className = 'tree-action-verb';
-      verb.textContent = action.toolName === 'write_file' ? 'Wrote' : 'Edited';
+      verb.textContent = isActionRunning
+        ? (action.toolName === 'write_file' ? 'Writing' : 'Editing')
+        : (action.toolName === 'write_file' ? 'Wrote' : 'Edited');
 
       const targetPath = action.toolTarget || 'file';
       const badgeInfo = getFileExtensionBadge(targetPath);
@@ -3536,10 +3664,10 @@ function renderChatProcess(processes: ChatProcessEntry[], running: boolean) {
     } else if (action.toolName === 'run_command') {
       const verb = document.createElement('span');
       verb.className = 'tree-action-verb';
-      verb.textContent = 'Ran';
+      verb.textContent = isActionRunning ? 'Running' : 'Ran';
 
       const cmdSpan = document.createElement('code');
-      cmdSpan.className = 'tree-cmd';
+      cmdSpan.className = `tree-cmd${isActionRunning ? ' cmd-running' : ''}`;
       const cmdText = action.toolTarget || action.toolArgsRaw || '';
       cmdSpan.textContent = cmdText;
       cmdSpan.title = cmdText;
@@ -3550,10 +3678,24 @@ function renderChatProcess(processes: ChatProcessEntry[], running: boolean) {
         hasDrawer = true;
         drawerContent = renderTerminalOutput(action.output);
       }
+    } else if (action.toolName === 'search_web') {
+      const verb = document.createElement('span');
+      verb.className = 'tree-action-verb';
+      verb.textContent = isActionRunning ? 'Searching' : 'Searched';
+
+      const querySpan = document.createElement('span');
+      querySpan.className = 'tree-target';
+      querySpan.textContent = action.toolTarget || 'web';
+      row.append(verb, querySpan);
+
+      if (action.output) {
+        hasDrawer = true;
+        drawerContent = renderTerminalOutput(action.output);
+      }
     } else if (action.toolName === 'list_dir' || action.toolName === 'search_path' || action.toolName === 'glob' || action.toolName === 'analyze_workspace') {
       const verb = document.createElement('span');
       verb.className = 'tree-action-verb';
-      verb.textContent = 'Explored';
+      verb.textContent = isActionRunning ? 'Exploring' : 'Explored';
 
       const targetSpan = document.createElement('span');
       targetSpan.className = 'tree-target';
@@ -3576,7 +3718,7 @@ function renderChatProcess(processes: ChatProcessEntry[], running: boolean) {
     } else {
       const verb = document.createElement('span');
       verb.className = 'tree-action-verb';
-      verb.textContent = action.title || 'Aktivitas';
+      verb.textContent = isActionRunning ? 'Memproses' : (action.title || 'Aktivitas');
 
       if (action.output) {
         const textSpan = document.createElement('span');
@@ -3705,6 +3847,7 @@ async function sendChatMessageText(message: string, sessionId: string, attachmen
   const requestId = `chat-stream-${Date.now()}-${Math.random().toString(16).slice(2)}`;
   let controlsOwner = true;
   activeChatStreamRequestId = requestId;
+  startActiveStreamTimer();
   resetChatProcess();
   appendChatProcess('thinking', 'Menyiapkan sesi, memory context, dan koneksi provider.');
   const timestamp = Date.now();
@@ -3765,6 +3908,7 @@ async function sendChatMessageText(message: string, sessionId: string, attachmen
       chatProcessHistory.set(session.id, sessionHistory);
     }
     activeChatStreamRequestId = '';
+    stopActiveStreamTimer();
     activeChatStreamRollbackSession = null;
     await Promise.all([loadChatSessions(), loadMemories(), loadSkills()]);
     if (chatStatus) chatStatus.textContent = 'Streaming selesai dan respons tersimpan secara lokal.';
@@ -3775,6 +3919,7 @@ async function sendChatMessageText(message: string, sessionId: string, attachmen
       return;
     }
     activeChatStreamRequestId = '';
+    stopActiveStreamTimer();
     const messageText = error instanceof Error ? error.message : String(error);
 
     const session = chatSessions.find((s) => s.id === temporarySessionId || s.id === activeChatSessionId);
@@ -3806,6 +3951,7 @@ async function sendChatMessageText(message: string, sessionId: string, attachmen
     }
     if (retryChatButton) retryChatButton.disabled = !lastChatRetry;
   } finally {
+    stopActiveStreamTimer();
     if (controlsOwner) {
       if (sendChatButton) sendChatButton.disabled = false;
       if (cancelChatStreamButton) {
@@ -3819,6 +3965,7 @@ async function sendChatMessageText(message: string, sessionId: string, attachmen
 async function cancelActiveChatStream() {
   const requestId = activeChatStreamRequestId;
   if (!requestId) return;
+  stopActiveStreamTimer();
   if (cancelChatStreamButton) cancelChatStreamButton.disabled = true;
   try {
     await invokeCommand<boolean>('cancel_desktop_chat_stream', { requestId });
