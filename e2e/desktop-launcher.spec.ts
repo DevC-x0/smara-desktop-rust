@@ -99,7 +99,16 @@ async function installMockTauri(
           if (args.request.message.includes('cancel')) {
             await new Promise((resolve) => setTimeout(resolve, 600));
           }
-          if (args.request.message.includes('cek storage')) {
+          if (args.request.message.includes('roadmap test')) {
+            for (const handler of window.__SMARA_E2E_EVENT_HANDLERS__['desktop-chat-stream'] ?? []) {
+              handler({ payload: { request_id: requestId, kind: 'thinking', delta: 'Menganalisis dependensi workspace dan memeriksa histori percakapan.' } });
+              handler({ payload: { request_id: requestId, kind: 'compaction', delta: '⚡ Context Compacted: -58% token reduction (pruned 4 verbose tool blocks)' } });
+              handler({ payload: { request_id: requestId, kind: 'tool_start', delta: '🛠️ Eksekusi Tool: `run_command` ({"command": "cargo build --release"})' } });
+              handler({ payload: { request_id: requestId, kind: 'tool_done', delta: '✓ Hasil `run_command`: [Status: Exit 0 (Success)]\nCompiling smara-desktop-rust v0.3.0\nFinished release profile [optimized] in 45s' } });
+              handler({ payload: { request_id: requestId, kind: 'tool_start', delta: '🛠️ Eksekusi Tool: `run_command` ({"command": "rm -rf /tmp/smara-build-temp", "approved": true})' } });
+              handler({ payload: { request_id: requestId, kind: 'tool_done', delta: '✓ Hasil `run_command`: [Status: Exit 0 (Success)]\nDirektori sementara berhasil dibersihkan.' } });
+            }
+          } else if (args.request.message.includes('cek storage')) {
             for (const handler of window.__SMARA_E2E_EVENT_HANDLERS__['desktop-chat-stream'] ?? []) {
               handler({ payload: { request_id: requestId, kind: 'thinking', delta: 'Menyiapkan sesi, memory context, dan koneksi provider.' } });
               handler({ payload: { request_id: requestId, kind: 'explore', delta: 'Workspace Scanner: Local Workspace Content for `/home/cahya/2026`' } });
@@ -129,6 +138,24 @@ async function installMockTauri(
           for (const handler of window.__SMARA_E2E_EVENT_HANDLERS__['desktop-chat-stream'] ?? []) {
             handler({ payload: { request_id: requestId, kind: 'tool_done', delta: 'Provider stream done' } });
           }
+          const emittedProcesses = args.request.message.includes('roadmap test')
+            ? [
+                { kind: 'thinking', text: 'Menganalisis dependensi workspace dan memeriksa histori percakapan.', created_at: timestamp },
+                { kind: 'compaction', text: '⚡ Context Compacted: -58% token reduction (pruned 4 verbose tool blocks)', created_at: timestamp + 100 },
+                { kind: 'tool_start', text: '🛠️ Eksekusi Tool: `run_command` ({"command": "cargo build --release"})', created_at: timestamp + 200 },
+                { kind: 'tool_done', text: '✓ Hasil `run_command`: [Status: Exit 0 (Success)]\nCompiling smara-desktop-rust v0.3.0\nFinished release profile [optimized] in 45s', created_at: timestamp + 600 },
+                { kind: 'tool_start', text: '🛠️ Eksekusi Tool: `run_command` ({"command": "rm -rf /tmp/smara-build-temp", "approved": true})', created_at: timestamp + 700 },
+                { kind: 'tool_done', text: '✓ Hasil `run_command`: [Status: Exit 0 (Success)]\nDirektori sementara berhasil dibersihkan.', created_at: timestamp + 900 },
+                { kind: 'complete', text: 'Respons selesai dan tersimpan di sesi lokal.', created_at: timestamp + 1000 },
+              ]
+            : [
+                { kind: 'thinking', text: 'Mock thinking', created_at: timestamp },
+                { kind: 'analysis', text: 'Mock analysis', created_at: timestamp },
+                { kind: 'tool_start', text: 'Provider call: mock', created_at: timestamp },
+                { kind: 'tool_done', text: 'Provider stream done', created_at: timestamp },
+                { kind: 'complete', text: 'Respons selesai dan tersimpan di sesi lokal.', created_at: timestamp },
+              ];
+
           const session = {
             id: existing?.id || `chat-${timestamp}`,
             title: existing?.title || args.request.message,
@@ -141,14 +168,10 @@ async function installMockTauri(
               {
                 id: 'assistant-stream',
                 role: 'assistant',
-                content: 'native streaming reply',
-                processes: [
-                  { kind: 'thinking', text: 'Mock thinking', created_at: timestamp },
-                  { kind: 'analysis', text: 'Mock analysis', created_at: timestamp },
-                  { kind: 'tool_start', text: 'Provider call: mock', created_at: timestamp },
-                  { kind: 'tool_done', text: 'Provider stream done', created_at: timestamp },
-                  { kind: 'complete', text: 'Respons selesai dan tersimpan di sesi lokal.', created_at: timestamp },
-                ],
+                content: args.request.message.includes('roadmap test')
+                  ? 'Berikut adalah hasil proses kompilasi binary produksi dan pembersihan direktori sementara:\n\n1. **Kompilasi Sukses**: Binary rilis telah dioptimasi.\n2. **Security Check**: Perintah berisiko tinggi (`rm -rf`) telah divalidasi dan disetujui.\n3. **Context Optimization**: Konteks percakapan telah dipadatkan sebesar **58%**.'
+                  : 'native streaming reply',
+                processes: emittedProcesses,
                 created_at_ms: timestamp,
               },
             ],
@@ -1328,6 +1351,57 @@ test('displays dynamic loading and running status indicators during tool executi
   // Wait for stream completion
   await expect(page.locator('#chat-status')).toContainText('Streaming selesai');
   await expect(page.locator('#cancel-chat-stream-button')).toBeHidden();
+});
+
+test('captures full testing screenshots for roadmap features (context compaction, command risk, passive memory)', async ({ page }) => {
+  await installMockTauri(page);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto('/');
+  await openDesktopPage(page, 'chat');
+
+  // Submit roadmap test prompt
+  await page.locator('#chat-input').fill('roadmap test: build release binary smara lalu bersihkan direktori build sementara');
+  await page.locator('#send-chat-button').click();
+
+  // Wait for stream completion
+  await expect(page.locator('#chat-status')).toContainText('Streaming selesai', { timeout: 10000 });
+  await expect(page.locator('.chat-message-assistant')).toBeVisible();
+
+  // Expand the trajectory process tree
+  const treeSummary = page.locator('.agent-process-tree summary');
+  if (await treeSummary.count() > 0) {
+    const isClosed = await treeSummary.evaluate((el) => !el.parentElement?.hasAttribute('open'));
+    if (isClosed) {
+      await treeSummary.click();
+    }
+  }
+
+  // Verify risk badges and compaction in trajectory
+  await expect(page.locator('.tree-risk-badge.risk-mutation')).toBeVisible();
+  await expect(page.locator('.tree-risk-badge.risk-dangerous')).toBeVisible();
+  await expect(page.locator('.agent-tree-row', { hasText: 'Context Compactor' })).toBeVisible();
+
+  // Capture high resolution screenshot of Chat page with Compactor chip and Risk Badges
+  await page.waitForTimeout(500);
+  await page.screenshot({ path: '/home/cahya/.gemini/antigravity/brain/9f9ccaa3-3e79-4763-8864-344f94eb7e24/roadmap_features_testing_screenshot.png' });
+
+  // Navigate to Memory tab and create auto-extracted memories
+  await openDesktopPage(page, 'memory');
+  await page.locator('#memory-input').fill('Selalu gunakan framework Tailwind CSS dan pnpm untuk proyek ini.');
+  await page.locator('#memory-tags-input').fill('auto-extracted, preference');
+  await page.locator('#save-memory-button').click();
+
+  await page.locator('#memory-input').fill('Database utama menggunakan PostgreSQL dengan migrasi SQLx.');
+  await page.locator('#memory-tags-input').fill('auto-extracted, architecture');
+  await page.locator('#save-memory-button').click();
+
+  await page.locator('#memory-input').fill('Format log terminal menggunakan mode ringkas (compact status).');
+  await page.locator('#memory-tags-input').fill('auto-extracted, preference');
+  await page.locator('#save-memory-button').click();
+
+  await expect(page.locator('#memory-list .memory-item')).toHaveCount(3);
+  await page.waitForTimeout(400);
+  await page.screenshot({ path: '/home/cahya/.gemini/antigravity/brain/9f9ccaa3-3e79-4763-8864-344f94eb7e24/passive_memory_testing_screenshot.png' });
 });
 
 
