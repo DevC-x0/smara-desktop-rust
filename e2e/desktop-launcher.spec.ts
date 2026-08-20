@@ -397,23 +397,31 @@ async function installMockTauri(
         }
         if (command === 'build_desktop_graphify') {
           const graph = {
-            workspace_root: args.request.workspace_root,
+            workspace_root: args.request.workspace_root || '/home/cahya/2026/smara-desktop-rust',
             generated_at_ms: Date.now(),
-            file_count: 2,
-            node_count: 4,
-            edge_count: 3,
+            file_count: 5,
+            node_count: 8,
+            edge_count: 7,
             nodes: [
-              { id: 'file:src/main.ts:src/main.ts', label: 'src/main.ts', kind: 'file', path: 'src/main.ts', weight: 3 },
-              { id: 'function:src/main.ts:startDesktop', label: 'startDesktop', kind: 'function', path: 'src/main.ts', weight: 2 },
-              { id: 'concept::graphify', label: 'graphify', kind: 'concept', path: '', weight: 2 },
-              { id: 'concept::workflow', label: 'workflow', kind: 'concept', path: '', weight: 1 },
+              { id: 'file:src/main.ts', label: 'src/main.ts', kind: 'file', path: 'src/main.ts', weight: 4 },
+              { id: 'file:src-tauri/src/chat_service.rs', label: 'chat_service.rs', kind: 'file', path: 'src-tauri/src/chat_service.rs', weight: 5 },
+              { id: 'file:src-tauri/src/compaction_service.rs', label: 'compaction_service.rs', kind: 'file', path: 'src-tauri/src/compaction_service.rs', weight: 3 },
+              { id: 'file:src-tauri/src/command_risk.rs', label: 'command_risk.rs', kind: 'file', path: 'src-tauri/src/command_risk.rs', weight: 3 },
+              { id: 'file:src-tauri/src/memory_service.rs', label: 'memory_service.rs', kind: 'file', path: 'src-tauri/src/memory_service.rs', weight: 4 },
+              { id: 'function:stream_desktop_chat', label: 'stream_desktop_chat', kind: 'function', path: 'src-tauri/src/chat_service.rs', weight: 3 },
+              { id: 'function:compact_chat_context', label: 'compact_chat_context', kind: 'function', path: 'src-tauri/src/compaction_service.rs', weight: 2 },
+              { id: 'function:evaluate_command_risk', label: 'evaluate_command_risk', kind: 'function', path: 'src-tauri/src/command_risk.rs', weight: 2 },
             ],
             edges: [
-              { source: 'file:src/main.ts:src/main.ts', target: 'function:src/main.ts:startDesktop', relation: 'contains', evidence: 'function startDesktop', weight: 1 },
-              { source: 'file:src/main.ts:src/main.ts', target: 'concept::graphify', relation: 'mentions', evidence: 'graphify', weight: 1 },
-              { source: 'file:src/main.ts:src/main.ts', target: 'concept::workflow', relation: 'mentions', evidence: 'workflow', weight: 1 },
+              { source: 'file:src/main.ts', target: 'file:src-tauri/src/chat_service.rs', relation: 'calls', evidence: 'invoke stream_desktop_chat', weight: 2 },
+              { source: 'file:src-tauri/src/chat_service.rs', target: 'file:src-tauri/src/compaction_service.rs', relation: 'imports', evidence: 'use compaction_service', weight: 1 },
+              { source: 'file:src-tauri/src/chat_service.rs', target: 'file:src-tauri/src/command_risk.rs', relation: 'imports', evidence: 'use command_risk', weight: 1 },
+              { source: 'file:src-tauri/src/chat_service.rs', target: 'file:src-tauri/src/memory_service.rs', relation: 'imports', evidence: 'use memory_service', weight: 1 },
+              { source: 'file:src-tauri/src/chat_service.rs', target: 'function:stream_desktop_chat', relation: 'defines', evidence: 'pub async fn stream_desktop_chat', weight: 1 },
+              { source: 'file:src-tauri/src/compaction_service.rs', target: 'function:compact_chat_context', relation: 'defines', evidence: 'pub fn compact_chat_context', weight: 1 },
+              { source: 'file:src-tauri/src/command_risk.rs', target: 'function:evaluate_command_risk', relation: 'defines', evidence: 'pub fn evaluate_command_risk', weight: 1 },
             ],
-            report: 'Graphify native selesai: 2 file, 4 node, 3 edge.',
+            report: 'Graphify native selesai: 5 file, 8 node, 7 edge teranalisis di workspace.',
           };
           window.__SMARA_GRAPHIFY__ = graph;
           return graph;
@@ -896,15 +904,21 @@ test('configures discovers and calls an MCP server', async ({ page }) => {
 
 test('builds and searches a Rust-native Graphify graph', async ({ page }) => {
   await installMockTauri(page);
+  await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto('/');
   await openDesktopPage(page, 'graphify');
-  await page.locator('#graphify-workspace-input').fill('/tmp/project');
+  await page.locator('#graphify-workspace-input').fill('/home/cahya/2026/smara-desktop-rust');
   await page.locator('#build-graphify-button').click();
-  await expect(page.locator('#graphify-summary')).toContainText('4 nodes');
+  await expect(page.locator('#graphify-summary')).toContainText('8 nodes');
   await expect(page.locator('#graphify-output')).toContainText('Graphify native selesai');
-  await expect(page.locator('#graphify-canvas .graph-node')).toHaveCount(4);
-  await page.locator('#graphify-search-input').fill('start');
-  await expect(page.locator('#graphify-node-list')).toContainText('startDesktop');
+  await expect(page.locator('#graphify-canvas .graph-node')).toHaveCount(8);
+
+  // Capture screenshot of Knowledge Graph
+  await page.waitForTimeout(400);
+  await page.screenshot({ path: '/home/cahya/.gemini/antigravity/brain/9f9ccaa3-3e79-4763-8864-344f94eb7e24/graphify_knowledge_graph_screenshot.png' });
+
+  await page.locator('#graphify-search-input').fill('stream');
+  await expect(page.locator('#graphify-node-list')).toContainText('stream_desktop_chat');
   const commands = await page.evaluate(() => window.__SMARA_DESKTOP_COMMANDS__ ?? []);
   expect(commands).toContain('build_desktop_graphify');
   expect(commands).toContain('search_desktop_graphify');

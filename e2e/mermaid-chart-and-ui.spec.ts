@@ -172,5 +172,10 @@ test.describe('Smara Desktop UI - Full Mermaid Diagram & Chart Suite', () => {
       expect(box?.width).toBeGreaterThan(50);
       expect(box?.height).toBeGreaterThan(30);
     }
+
+    // Capture screenshot of rendered diagrams
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.waitForTimeout(400);
+    await page.screenshot({ path: '/home/cahya/.gemini/antigravity/brain/9f9ccaa3-3e79-4763-8864-344f94eb7e24/mermaid_architecture_diagram_screenshot.png' });
   });
 });
