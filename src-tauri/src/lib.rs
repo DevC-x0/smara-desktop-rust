@@ -2,6 +2,7 @@ mod app_service;
 mod app_state;
 mod builtin_tools;
 mod chat_service;
+pub mod compaction_service;
 mod export_service;
 mod graphify_service;
 mod improvement_service;

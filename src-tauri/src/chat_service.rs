@@ -1260,9 +1260,28 @@ pub async fn stream_desktop_chat(
                 let state_for_cancel = stream_state.clone();
                 let req_id_for_cancel_inner = request_id_for_cancel.clone();
 
+                let (effective_messages, compaction_stats) = crate::compaction_service::compact_chat_context(&dynamic_messages, 60_000);
+                if compaction_stats.is_compacted && _turn == 0 {
+                    let compaction_info = format!("⚡ Context Compacted: -{}% token reduction (pruned {} verbose tool blocks)", compaction_stats.saved_ratio_percent, compaction_stats.pruned_tool_outputs);
+                    let _ = event_app_for_thinking.emit(
+                        "desktop-chat-stream",
+                        DesktopChatStreamEvent {
+                            request_id: req_id_for_thinking.clone(),
+                            kind: "compaction".to_string(),
+                            delta: compaction_info.clone(),
+                        },
+                    );
+                    let mut rec = rec_for_blocking.lock().unwrap();
+                    rec.push(ChatProcessEntry {
+                        kind: "compaction".to_string(),
+                        text: compaction_info,
+                        created_at: now_ms(),
+                    });
+                }
+
                 let stream_out = request_streaming_completion(
                     &config,
-                    &dynamic_messages,
+                    &effective_messages,
                     &tools_schema,
                     move |reasoning| {
                         let _ = event_app_for_thinking.emit(

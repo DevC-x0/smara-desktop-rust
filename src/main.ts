@@ -3215,6 +3215,16 @@ function aggregateAgentProcesses(processes: ChatProcessEntry[]): UnifiedAgentAct
         startTime: p.createdAt,
         endTime: p.createdAt,
       });
+    } else if (p.kind === 'compaction') {
+      actions.push({
+        id: `action-${actions.length + 1}`,
+        category: 'context',
+        title: 'Context Compactor',
+        status: 'completed',
+        output: p.text,
+        startTime: p.createdAt,
+        endTime: p.createdAt,
+      });
     } else if (p.kind === 'complete') {
       actions.forEach((a) => {
         if (a.status === 'running') {
