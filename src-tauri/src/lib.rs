@@ -2,6 +2,7 @@ mod app_service;
 mod app_state;
 mod builtin_tools;
 mod chat_service;
+pub mod command_risk;
 pub mod compaction_service;
 mod export_service;
 mod graphify_service;
@@ -27,6 +28,7 @@ use chat_service::{
     move_desktop_chat_session_workspace, send_desktop_chat, stream_desktop_chat,
     DesktopChatStreamState,
 };
+use command_risk::evaluate_desktop_command_risk;
 use export_service::{export_desktop_chat_session, save_exported_chat};
 use graphify_service::{build_desktop_graphify, get_desktop_graphify, search_desktop_graphify};
 use mcp_service::{
@@ -133,7 +135,8 @@ pub fn run() {
             export_history_to_file,
             import_history_from_file,
             clear_run_history_selective,
-            trim_run_history_to_limit
+            trim_run_history_to_limit,
+            evaluate_desktop_command_risk
         ])
         .build(tauri::generate_context!())
         .expect("error while building Smara Desktop Rust");

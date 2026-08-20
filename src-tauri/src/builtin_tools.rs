@@ -1579,6 +1579,17 @@ fn execute(root: &Path, tool: &str, args: &Value) -> Result<String, String> {
                 effective_command = effective_command.replacen("npx ", "npx --yes ", 1);
             }
 
+            let risk = crate::command_risk::evaluate_command_risk(&effective_command, Some(root));
+            if risk.level == crate::command_risk::RiskLevel::DangerousDestructive {
+                let approved = args.get("approved").and_then(Value::as_bool).unwrap_or(false);
+                if !approved {
+                    return Err(format!(
+                        "🛡️ [High Risk Blocked]: Operasi sistem berisiko tinggi terdeteksi.\nAlasan: {}\nPerintah: `{}`\nUntuk menjalankan, berikan konfirmasi eksplisit parameter `approved: true`.",
+                        risk.reason, effective_command
+                    ));
+                }
+            }
+
             #[cfg(unix)]
             let output = {
                 let shell = if std::path::Path::new("/bin/bash").exists() { "/bin/bash" } else { "sh" };
@@ -2057,6 +2068,25 @@ mod tests {
 
         let list_skills = run(&root, "list_installed_skills", json!({}), false).unwrap();
         assert!(list_skills.output.contains("docker_cleaner"));
+
+        // Test Dangerous Command Blocking
+        let dangerous_err = run(
+            &root,
+            "run_command",
+            json!({ "command": "rm -rf /tmp/danger_zone" }),
+            true,
+        );
+        assert!(dangerous_err.is_err());
+        assert!(dangerous_err.unwrap_err().contains("High Risk Blocked"));
+
+        // Test Dangerous Command Approved
+        let dangerous_approved = run(
+            &root,
+            "run_command",
+            json!({ "command": "rm -rf /tmp/danger_zone_non_existent", "approved": true }),
+            true,
+        );
+        assert!(dangerous_approved.is_ok());
 
         let _ = fs::remove_dir_all(root);
     }

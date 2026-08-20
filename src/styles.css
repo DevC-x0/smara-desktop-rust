@@ -4036,4 +4036,40 @@ svg[aria-roledescription="error"],
   animation: pulse-ring 1s infinite;
 }
 
+/* Command Risk Badges */
+.tree-risk-badge {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-left: 6px;
+}
+
+.tree-risk-badge.risk-safe {
+  background: rgba(16, 185, 129, 0.12);
+  color: #34D399;
+  border: 1px solid rgba(16, 185, 129, 0.25);
+}
+
+.tree-risk-badge.risk-mutation {
+  background: rgba(245, 158, 11, 0.12);
+  color: #FBBF24;
+  border: 1px solid rgba(245, 158, 11, 0.25);
+}
+
+.tree-risk-badge.risk-dangerous {
+  background: rgba(239, 68, 68, 0.15);
+  color: #F87171;
+  border: 1px solid rgba(239, 68, 68, 0.35);
+  animation: pulse-danger 2s infinite ease-in-out;
+}
+
+@keyframes pulse-danger {
+  0%, 100% { opacity: 0.9; }
+  50% { opacity: 1; border-color: rgba(239, 68, 68, 0.7); }
+}
+
 

@@ -149,6 +149,7 @@ pub fn compact_chat_context(messages: &[Value], max_allowed_chars: usize) -> (Ve
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
 
     #[test]
     fn test_prune_verbose_tool_output() {

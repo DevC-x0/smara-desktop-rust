@@ -3682,7 +3682,23 @@ function renderChatProcess(processes: ChatProcessEntry[], running: boolean) {
       cmdSpan.textContent = cmdText;
       cmdSpan.title = cmdText;
 
-      row.append(verb, cmdSpan);
+      const lowerCmd = cmdText.toLowerCase();
+      let riskBadge: HTMLElement | null = null;
+      if (lowerCmd.includes('rm -rf') || lowerCmd.includes('git reset --hard') || lowerCmd.includes('chmod 777') || lowerCmd.includes('~/.ssh') || lowerCmd.includes('/etc')) {
+        riskBadge = document.createElement('span');
+        riskBadge.className = 'tree-risk-badge risk-dangerous';
+        riskBadge.innerHTML = '🛡️ High Risk';
+      } else if (lowerCmd.includes('cargo build') || lowerCmd.includes('npm i') || lowerCmd.includes('touch') || lowerCmd.includes('mkdir') || lowerCmd.includes('git commit')) {
+        riskBadge = document.createElement('span');
+        riskBadge.className = 'tree-risk-badge risk-mutation';
+        riskBadge.innerHTML = '⚡ Mutating';
+      }
+
+      if (riskBadge) {
+        row.append(verb, cmdSpan, riskBadge);
+      } else {
+        row.append(verb, cmdSpan);
+      }
 
       if (action.output) {
         hasDrawer = true;
