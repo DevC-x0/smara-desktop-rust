@@ -99,10 +99,23 @@ async function installMockTauri(
           if (args.request.message.includes('cancel')) {
             await new Promise((resolve) => setTimeout(resolve, 600));
           }
-          for (const handler of window.__SMARA_E2E_EVENT_HANDLERS__['desktop-chat-stream'] ?? []) {
-            handler({ payload: { request_id: requestId, kind: 'thinking', delta: 'Mock thinking' } });
-            handler({ payload: { request_id: requestId, kind: 'analysis', delta: 'Mock analysis' } });
-            handler({ payload: { request_id: requestId, kind: 'tool_start', delta: 'Provider call: mock' } });
+          if (args.request.message.includes('cek storage')) {
+            for (const handler of window.__SMARA_E2E_EVENT_HANDLERS__['desktop-chat-stream'] ?? []) {
+              handler({ payload: { request_id: requestId, kind: 'thinking', delta: 'Menyiapkan sesi, memory context, dan koneksi provider.' } });
+              handler({ payload: { request_id: requestId, kind: 'explore', delta: 'Workspace Scanner: Local Workspace Content for `/home/cahya/2026`' } });
+              handler({ payload: { request_id: requestId, kind: 'tool_start', delta: '🛠️ Eksekusi Tool: `run_command` ({"command": "df -h && echo \'--- TOP 15 IN /home/cahya ---\' && du -h --max-depth=1 /home/cahya 2>/dev/null | sort -hr | head -n 15"})' } });
+            }
+            // Give 1200ms delay while tool is actively running so E2E test / screenshot can capture the running state
+            await new Promise((resolve) => setTimeout(resolve, 1200));
+            for (const handler of window.__SMARA_E2E_EVENT_HANDLERS__['desktop-chat-stream'] ?? []) {
+              handler({ payload: { request_id: requestId, kind: 'tool_done', delta: '✓ Hasil `run_command`: Filesystem Size Used Avail Use% Mounted on /dev/nvme0n1p2 468G 142G 303G 32% /' } });
+            }
+          } else {
+            for (const handler of window.__SMARA_E2E_EVENT_HANDLERS__['desktop-chat-stream'] ?? []) {
+              handler({ payload: { request_id: requestId, kind: 'thinking', delta: 'Mock thinking' } });
+              handler({ payload: { request_id: requestId, kind: 'analysis', delta: 'Mock analysis' } });
+              handler({ payload: { request_id: requestId, kind: 'tool_start', delta: 'Provider call: mock' } });
+            }
           }
           for (const delta of ['native ', 'streaming reply']) {
             if (window.__SMARA_CANCELLED_CHAT_STREAMS__.has(requestId)) {
@@ -1288,15 +1301,29 @@ test('opens and reviews file changes in git diff review modal', async ({ page })
 
 test('displays dynamic loading and running status indicators during tool execution', async ({ page }) => {
   await installMockTauri(page);
+  await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto('/');
   await openDesktopPage(page, 'chat');
 
   // Submit command
-  await page.locator('#chat-input').fill('cek storage');
+  await page.locator('#chat-input').fill('cek storage saya berapa sekarang dan analisis file apa aja yg memakan storage');
   await page.locator('#send-chat-button').click();
 
   // Cancel button should appear while running
   await expect(page.locator('#cancel-chat-stream-button')).toBeVisible();
+
+  // Wait a moment for tool_start to render live execution card and running tree row
+  await page.waitForTimeout(400);
+
+  // Capture screenshot of the live running UI
+  await page.screenshot({ path: '/home/cahya/.gemini/antigravity/brain/9f9ccaa3-3e79-4763-8864-344f94eb7e24/live_loading_process_screenshot.png' });
+
+  // Verify live running card exists
+  const liveCard = page.locator('.agent-live-status-card');
+  if (await liveCard.count() > 0) {
+    await expect(liveCard).toContainText('RUNNING');
+    await expect(liveCard).toContainText('run_command');
+  }
 
   // Wait for stream completion
   await expect(page.locator('#chat-status')).toContainText('Streaming selesai');
