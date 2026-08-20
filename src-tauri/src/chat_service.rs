@@ -1531,6 +1531,11 @@ pub async fn stream_desktop_chat(
         for event in learn_from_desktop_chat(&learning_app, &config, &session).unwrap_or_default() {
             emit_chat_stream_event(&learning_app, &request_id_for_done, &event.kind, event.text);
         }
+        let _ = crate::memory_service::persist_passive_extracted_memories(
+            &learning_app,
+            &session.messages,
+            session.workspace.as_deref(),
+        );
         Ok(session)
     })
     .await

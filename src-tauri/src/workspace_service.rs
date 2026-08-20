@@ -663,7 +663,50 @@ pub fn apply_code_to_file(
     fs::write(&target_path, content)
         .map_err(|e| format!("Failed to write to file {}: {e}", target_path.display()))?;
 
+    record_file_modification(&path, "user-apply");
+
     Ok(true)
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct WorkspaceFileCollision {
+    pub file_path: String,
+    pub modified_by_session: String,
+    pub last_modified_ms: u128,
+    pub message: String,
+}
+
+static FILE_MODIFICATION_REGISTRY: std::sync::Mutex<Option<std::collections::HashMap<String, (String, u128)>>> =
+    std::sync::Mutex::new(None);
+
+pub fn record_file_modification(file_path: &str, session_id: &str) {
+    let Ok(mut guard) = FILE_MODIFICATION_REGISTRY.lock() else {
+        return;
+    };
+    let map = guard.get_or_insert_with(std::collections::HashMap::new);
+    map.insert(file_path.to_string(), (session_id.to_string(), crate::app_state::now_ms()));
+}
+
+#[tauri::command]
+pub fn check_workspace_file_collisions(session_id: String, _workspace: Option<String>) -> Vec<WorkspaceFileCollision> {
+    let Ok(guard) = FILE_MODIFICATION_REGISTRY.lock() else {
+        return Vec::new();
+    };
+    let Some(map) = guard.as_ref() else {
+        return Vec::new();
+    };
+    let mut collisions = Vec::new();
+    for (path, (mod_session, timestamp)) in map {
+        if !mod_session.is_empty() && mod_session != &session_id {
+            collisions.push(WorkspaceFileCollision {
+                file_path: path.clone(),
+                modified_by_session: mod_session.clone(),
+                last_modified_ms: *timestamp,
+                message: format!("File '{path}' telah diperbarui oleh sesi '{mod_session}'."),
+            });
+        }
+    }
+    collisions
 }
 
 #[cfg(test)]
@@ -754,5 +797,15 @@ mod tests {
         assert!(!diff.is_git);
         assert_eq!(diff.files.len(), 0);
         let _ = fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn test_record_and_check_file_collisions() {
+        record_file_modification("src/main.ts", "session-alpha");
+        let collisions_for_beta = check_workspace_file_collisions("session-beta".to_string(), None);
+        assert!(collisions_for_beta.iter().any(|c| c.file_path == "src/main.ts" && c.modified_by_session == "session-alpha"));
+
+        let collisions_for_alpha = check_workspace_file_collisions("session-alpha".to_string(), None);
+        assert!(!collisions_for_alpha.iter().any(|c| c.file_path == "src/main.ts" && c.modified_by_session == "session-alpha"));
     }
 }

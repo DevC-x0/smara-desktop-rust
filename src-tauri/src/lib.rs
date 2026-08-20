@@ -55,9 +55,10 @@ use workflow_service::{
     run_desktop_workflow, save_desktop_workflow,
 };
 use workspace_service::{
-    apply_code_to_file, create_desktop_workspace, delete_desktop_workspace,
-    get_desktop_workspaces, get_workspace_file_tree, get_workspace_git_diff,
-    get_workspace_git_status, read_workspace_file, switch_desktop_workspace,
+    apply_code_to_file, check_workspace_file_collisions, create_desktop_workspace,
+    delete_desktop_workspace, get_desktop_workspaces, get_workspace_file_tree,
+    get_workspace_git_diff, get_workspace_git_status, read_workspace_file,
+    switch_desktop_workspace,
 };
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -136,7 +137,8 @@ pub fn run() {
             import_history_from_file,
             clear_run_history_selective,
             trim_run_history_to_limit,
-            evaluate_desktop_command_risk
+            evaluate_desktop_command_risk,
+            check_workspace_file_collisions
         ])
         .build(tauri::generate_context!())
         .expect("error while building Smara Desktop Rust");

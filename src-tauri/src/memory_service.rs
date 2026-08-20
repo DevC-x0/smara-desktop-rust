@@ -435,6 +435,65 @@ pub(crate) fn relevant_memories(
     relevant_memories_scoped(app, query, None, limit)
 }
 
+/// Extracts developer preferences and architectural decisions passively from chat messages
+pub fn extract_passive_memories(
+    messages: &[crate::chat_service::DesktopChatMessage],
+    workspace: Option<&str>,
+) -> Vec<CreateMemoryRequest> {
+    let mut extracted = Vec::new();
+    let pref_triggers = [
+        "selalu gunakan", "saya prefer", "preferensi:", "arsitektur:", "framework utama",
+        "database utama", "selalu buat", "jangan gunakan", "aturan proyek:", "stack:",
+        "proyek ini menggunakan"
+    ];
+
+    for msg in messages {
+        if msg.role != "user" {
+            continue;
+        }
+        let lines = msg.content.lines();
+        for line in lines {
+            let line_trim = line.trim();
+            let lower = line_trim.to_lowercase();
+            for trigger in pref_triggers {
+                if lower.contains(trigger) && line_trim.len() >= 10 && line_trim.len() <= 300 {
+                    extracted.push(CreateMemoryRequest {
+                        content: line_trim.to_string(),
+                        tags: vec!["auto-extracted".to_string(), "preference".to_string()],
+                        workspace: workspace.map(|w| w.to_string()),
+                    });
+                    break;
+                }
+            }
+        }
+    }
+    extracted
+}
+
+pub(crate) fn persist_passive_extracted_memories(
+    app: &AppHandle,
+    messages: &[crate::chat_service::DesktopChatMessage],
+    workspace: Option<&str>,
+) -> usize {
+    let requests = extract_passive_memories(messages, workspace);
+    if requests.is_empty() {
+        return 0;
+    }
+    let Ok(path) = memory_path(app) else {
+        return 0;
+    };
+    let mut count = 0;
+    for req in requests {
+        let existing = search_memories_at(&path, &req.content).unwrap_or_default();
+        if existing.is_empty() {
+            if create_memory_at(&path, req).is_ok() {
+                count += 1;
+            }
+        }
+    }
+    count
+}
+
 fn delete_memory_at(path: &Path, id: &str) -> Result<bool, String> {
     let mut memories = load_memories_from(path)?;
     let before = memories.len();
@@ -559,5 +618,32 @@ mod tests {
         assert!(delete_memory_at(&path, &memory.id).unwrap());
         assert_eq!(search_memories_at(&path, "").unwrap().len(), 1);
         let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn test_extract_passive_memories_from_conversation() {
+        let messages = vec![
+            crate::chat_service::DesktopChatMessage {
+                id: "msg-1".to_string(),
+                role: "user".to_string(),
+                content: "Halo, tolong perhatikan: selalu gunakan framework Tailwind CSS dan pnpm untuk proyek ini.".to_string(),
+                attachments: Vec::new(),
+                processes: Vec::new(),
+                created_at_ms: now_ms(),
+            },
+            crate::chat_service::DesktopChatMessage {
+                id: "msg-2".to_string(),
+                role: "assistant".to_string(),
+                content: "Baik, saya akan selalu menggunakan Tailwind CSS dan pnpm.".to_string(),
+                attachments: Vec::new(),
+                processes: Vec::new(),
+                created_at_ms: now_ms(),
+            },
+        ];
+
+        let extracted = super::extract_passive_memories(&messages, Some("default"));
+        assert_eq!(extracted.len(), 1);
+        assert!(extracted[0].content.contains("selalu gunakan"));
+        assert!(extracted[0].tags.contains(&"auto-extracted".to_string()));
     }
 }
